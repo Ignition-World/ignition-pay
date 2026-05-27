@@ -6,26 +6,27 @@ import '../../../../core/widgets/bigint_safe_chip.dart';
 import '../bloc/receive_bloc.dart';
 
 class ReceivePanel extends StatefulWidget {
-  final TextEditingController addressController;
-  const ReceivePanel({super.key, required this.addressController});
+  const ReceivePanel({super.key});
 
   @override
   State<ReceivePanel> createState() => _ReceivePanelState();
 }
 
 class _ReceivePanelState extends State<ReceivePanel> {
+  final _addressController = TextEditingController();
   final _idController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _addressController.addListener(_onChanged);
     _idController.addListener(_onChanged);
   }
 
   void _onChanged() {
     context.read<ReceiveBloc>().add(
           ReceiveFieldsChanged(
-            baseAddress: widget.addressController.text,
+            baseAddress: _addressController.text,
             id: _idController.text,
           ),
         );
@@ -48,6 +49,15 @@ class _ReceivePanelState extends State<ReceivePanel> {
             style: TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 24),
+          TextField(
+            controller: _addressController,
+            decoration: const InputDecoration(
+              labelText: 'Base Address (G-address or M-address)',
+              border: OutlineInputBorder(),
+              hintText: 'e.g. G... or M...',
+            ),
+          ),
+          const SizedBox(height: 16),
           TextField(
             controller: _idController,
             keyboardType: TextInputType.number,
@@ -122,6 +132,7 @@ class _ReceivePanelState extends State<ReceivePanel> {
 
   @override
   void dispose() {
+    _addressController.dispose();
     _idController.dispose();
     super.dispose();
   }

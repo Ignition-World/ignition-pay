@@ -38,7 +38,7 @@ class _AnalyzePanelState extends State<AnalyzePanel> {
             sourceAccount: _sourceController.text,
           ),
         );
-    context.read<SafeBloc>().add(AddressChanged(address));
+    context.read<SafeBloc>().add(SafeAddressChanged(address));
   }
 
   @override
