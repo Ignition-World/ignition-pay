@@ -2,6 +2,18 @@
 
 A production-grade reference implementation of the `stellar_address_kit`, demonstrating best practices for deposit routing in Stellar wallets and exchanges.
 
+## Features
+- Full integration of `stellar_address_kit` in a Flutter environment
+- BigInt-safe ID operations bypassing JavaScript's 53-bit integer limit on Flutter Web
+- BLoC-based Clean Architecture separating business logic from UI
+- Responsive layout supporting mobile and desktop views
+- Real-time address analysis with inline compliance warnings
+
+## Use Cases
+- Building robust, cross-platform Stellar wallets that correctly parse Muxed addresses
+- Implementing user-friendly deposit and receive interfaces with clear feedback
+- Reference implementation for managing complex state (BLoC) with address validation
+
 ## What this demonstrates
 This demo highlights the library's ability to ensure **deposit routing correctness** across platforms. It specifically showcases:
 - **BigInt Safety**: Reliable handling of 64-bit muxed IDs on **Flutter Web**, bypassing the common JavaScript precision loss at 2^53.
