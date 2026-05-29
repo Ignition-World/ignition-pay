@@ -1,0 +1,662 @@
+[
+  {
+    "id": "g-standard-01",
+    "description": "Standard valid G-address",
+    "input": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "g-standard-02",
+    "description": "G-address with min bytes",
+    "input": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+    }
+  },
+  {
+    "id": "g-standard-03",
+    "description": "G-address with max bytes",
+    "input": "GD7777777777777777777777777777777777777777777777777773DB",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GD7777777777777777777777777777777777777777777777777773DB"
+    }
+  },
+  {
+    "id": "g-standard-04",
+    "description": "Random G-address 4",
+    "input": "GAMBNV4TIPFLY7QQXG5NI7PHSF6TUFHRQ4JP5HIHLK7KESMD3P6LDOIH",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GAMBNV4TIPFLY7QQXG5NI7PHSF6TUFHRQ4JP5HIHLK7KESMD3P6LDOIH"
+    }
+  },
+  {
+    "id": "g-standard-05",
+    "description": "Random G-address 5",
+    "input": "GAGBNM2L55ZQVOSXIGE63BM67WQS4Q5UK45Y4ACQ2OFYWTDXTEJWBGKM",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GAGBNM2L55ZQVOSXIGE63BM67WQS4Q5UK45Y4ACQ2OFYWTDXTEJWBGKM"
+    }
+  },
+  {
+    "id": "g-standard-06",
+    "description": "Random G-address 6",
+    "input": "GAF4BBSAPYGR2NFX7V6OQCZI4DRVUJH4PENN4OUPFAULDO5D3PXCCVGA",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GAF4BBSAPYGR2NFX7V6OQCZI4DRVUJH4PENN4OUPFAULDO5D3PXCCVGA"
+    }
+  },
+  {
+    "id": "g-standard-07",
+    "description": "Random G-address 7",
+    "input": "GBCDRQITK4UKBGYZAPFM3DNJ6XZ6E43WQDMMSUNZDD4D6NT4GRMVCAUY",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GBCDRQITK4UKBGYZAPFM3DNJ6XZ6E43WQDMMSUNZDD4D6NT4GRMVCAUY"
+    }
+  },
+  {
+    "id": "g-standard-08",
+    "description": "Random G-address 8",
+    "input": "GCT7HWVZQMW4LR7DHZ3PYDNJBM36I4KHV5KPGPULAKPXZSYR2PXPC3VO",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GCT7HWVZQMW4LR7DHZ3PYDNJBM36I4KHV5KPGPULAKPXZSYR2PXPC3VO"
+    }
+  },
+  {
+    "id": "m-0",
+    "description": "M-address with ID = 0",
+    "input": "MAAAAAAAAAAAAABGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTNLFC",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "0",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-1",
+    "description": "M-address with ID = 1",
+    "input": "MAAAAAAAAAAAAAJGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTOFNY",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "1",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-2-53-m1",
+    "description": "M-address max safe js int",
+    "input": "MAAB7777777777ZGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTNA2S",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "9007199254740991",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-2-53",
+    "description": "M-address first unsafe js int",
+    "input": "MAACAAAAAAAAAABGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTOJMI",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "9007199254740992",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-2-53-p1",
+    "description": "M-address ID > 2^53",
+    "input": "MAACAAAAAAAAAAJGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTNHES",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "9007199254740993",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-2-64-m1",
+    "description": "M-address max uint64",
+    "input": "MD777777777777ZGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTNO3E",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "18446744073709551615",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-mid-7",
+    "description": "M-address mid range 7",
+    "input": "MAAAAAAAAAAAH3ZGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTOMEM",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "1007",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-mid-8",
+    "description": "M-address mid range 8",
+    "input": "MAAAAAAAAAAAH4BGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTNB2K",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "1008",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-mid-9",
+    "description": "M-address mid range 9",
+    "input": "MAAAAAAAAAAAH4JGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTOPSQ",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "1009",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-mid-10",
+    "description": "M-address mid range 10",
+    "input": "MAAAAAAAAAAAH4RGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTPNK4",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "1010",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-mid-11",
+    "description": "M-address mid range 11",
+    "input": "MAAAAAAAAAAAH4ZGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTMDCG",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "1011",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "m-mid-12",
+    "description": "M-address mid range 12",
+    "input": "MAAAAAAAAAAAH5BGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTNY3E",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "1012",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "c-valid-01",
+    "description": "Valid Contract address",
+    "input": "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526",
+    "expected": {
+      "type": "C",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "c-valid-02",
+    "description": "Valid Contract address 2",
+    "input": "CABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAFNSZ",
+    "expected": {
+      "type": "C",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "c-valid-03",
+    "description": "Valid Contract address 3",
+    "input": "CABQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGCK3",
+    "expected": {
+      "type": "C",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "c-valid-04",
+    "description": "Valid Contract address 4",
+    "input": "CACAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAINCW",
+    "expected": {
+      "type": "C",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "c-valid-05",
+    "description": "Valid Contract address 5",
+    "input": "CACQKBIFAUCQKBIFAUCQKBIFAUCQKBIFAUCQKBIFAUCQKBIFAUCQLC2U",
+    "expected": {
+      "type": "C",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "c-valid-06",
+    "description": "Valid Contract address 6",
+    "input": "CADAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMSST",
+    "expected": {
+      "type": "C",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "c-valid-07",
+    "description": "Valid Contract address 7",
+    "input": "CADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQP5KR",
+    "expected": {
+      "type": "C",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "c-valid-08",
+    "description": "Valid Contract address 8",
+    "input": "CAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQMCJ",
+    "expected": {
+      "type": "C",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-01",
+    "description": "Wrong checksum",
+    "input": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BA",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-02",
+    "description": "Truncated G",
+    "input": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-03",
+    "description": "Too long G",
+    "input": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BXA",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-04",
+    "description": "Wrong version byte (S)",
+    "input": "SCN53PQ7R76KEIPW6J6AQW63QDISRDANSRHFYPNYGKF67MKCTIY57KKD",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-05",
+    "description": "Empty string",
+    "input": "",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-06",
+    "description": "Whitespace only",
+    "input": "   ",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-07",
+    "description": "Non-base32 chars",
+    "input": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB471890OIl",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-08",
+    "description": "Null byte injection",
+    "input": "GATJOYQW57MF752BM7UZ\u0000ZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-09",
+    "description": "Unicode characters",
+    "input": "G💩TJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-10",
+    "description": "Leading trailing spaces (trim valid)",
+    "input": "  GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX ",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    }
+  },
+  {
+    "id": "inv-11",
+    "description": "Wrong checksum M-address",
+    "input": "MAAAAAAAAAAAAABGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTNLFA",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-12",
+    "description": "Valid Base32 but wrong length for G",
+    "input": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHFA",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "inv-13",
+    "description": "Valid Base32 wrong length 2",
+    "input": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "expected": {
+      "type": "invalid",
+      "isValid": false,
+      "routingSource": null,
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    }
+  },
+  {
+    "id": "edge-01",
+    "description": "Muxed address with memo present (memo ignored)",
+    "input": "MAAAAAAAAAAAAABGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTNLFC",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [
+        "memo-ignored"
+      ],
+      "decodedMuxedId": "0",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    },
+    "memoType": "id",
+    "memoValue": "999"
+  },
+  {
+    "id": "edge-02",
+    "description": "Contract sender routing warning",
+    "input": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [
+        "contract-sender"
+      ],
+      "decodedMuxedId": null,
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    },
+    "sourceAccount": "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526"
+  },
+  {
+    "id": "edge-03",
+    "description": "Smart account ambiguous routing",
+    "input": "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526",
+    "expected": {
+      "type": "C",
+      "isValid": true,
+      "routingSource": "none",
+      "memoRequired": false,
+      "warnings": [
+        "SMART_ACCOUNT_AMBIGUOUS_ROUTING"
+      ],
+      "decodedMuxedId": null,
+      "decodedPublicKey": null
+    },
+    "memoType": "id",
+    "memoValue": "123"
+  },
+  {
+    "id": "edge-04",
+    "description": "Muxed destination from contract",
+    "input": "MAAAAAAAAAAAAABGS5RBN36YL73UCZ7JTTH4S4TZCSZ2OE67ZNZPT52BJHTEDZ6HTNLFC",
+    "expected": {
+      "type": "M",
+      "isValid": true,
+      "routingSource": "muxed",
+      "memoRequired": false,
+      "warnings": [
+        "MUXED_DESTINATION_FROM_CONTRACT"
+      ],
+      "decodedMuxedId": "0",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    },
+    "sourceAccount": "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526"
+  },
+  {
+    "id": "edge-05",
+    "description": "G-address with memo routing",
+    "input": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX",
+    "expected": {
+      "type": "G",
+      "isValid": true,
+      "routingSource": "memo",
+      "memoRequired": false,
+      "warnings": [],
+      "decodedMuxedId": "123",
+      "decodedPublicKey": "GATJOYQW57MF752BM7UZZT6JOJ4RJM5HCPP4W4XZ65AUTZSB47DZW5BX"
+    },
+    "memoType": "id",
+    "memoValue": "123"
+  }
+]

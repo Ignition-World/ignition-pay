@@ -5,12 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Exchange Withdrawal Validator</title>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; line-height: 1.6; }
         .form-group { margin-bottom: 15px; }
+<<<<<<< feature/debounced-validation-218
         label { display: block; margin-bottom: 5px; }
         input, select { width: 100%; padding: 8px; box-sizing: border-box; }
         button { padding: 10px 20px; cursor: pointer; }
         #result { margin-top: 20px; padding: 15px; border: 1px solid #ddd; display: none; }
+        #validation { margin-top: 10px; padding: 10px; display: none; }
+        .validation-status { font-size: 0.85em; margin-top: 5px; min-height: 1.2em; }
+        .validating { color: #666; font-style: italic; }
+        .error { color: #d93025; }
+        .success { color: #188038; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; font-weight: bold; margin-left: 8px; text-transform: uppercase; }
+        .badge-m { background: #e8f0fe; color: #1967d2; }
+        .badge-c { background: #fce8e6; color: #d93025; }
+=======
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 20px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px; }
+        button:hover { background-color: #0056b3; }
+        #result { margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; display: none; background-color: #f9f9f9; }
+        .result-item { margin-bottom: 10px; }
+        .result-label { font-weight: bold; color: #555; }
+        .warning { padding: 8px 12px; margin-top: 5px; border-radius: 4px; border-left: 4px solid; }
+        .warning-info { background-color: #e7f3ff; border-left-color: #007bff; color: #004085; }
+        .warning-warn { background-color: #fff3cd; border-left-color: #ffc107; color: #856404; }
+        .warning-error { background-color: #f8d7da; border-left-color: #dc3545; color: #721c24; }
+        .banner-none { background-color: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 15px; border-radius: 4px; margin-top: 20px; text-align: center; font-weight: bold; }
+>>>>>>> dev
     </style>
 </head>
 <body>
@@ -19,6 +42,7 @@
     <div class="form-group">
         <label for="address">Stellar Address (G..., M..., or C...)</label>
         <input type="text" id="address" placeholder="Enter Stellar address">
+        <div id="validation" class="validation-status"></div>
     </div>
 
     <div class="form-group">
@@ -37,9 +61,14 @@
         <input type="text" id="memoValue" placeholder="Enter memo value">
     </div>
 
+<<<<<<< feature/debounced-validation-218
     <button id="submit">Validate Withdrawal</button>
+=======
+    <button id="submit">Analyze Routing</button>
 
+>>>>>>> dev
     <div id="result"></div>
+    <div id="banner-container"></div>
 
     <script>
         const submitBtn = document.getElementById('submit');
@@ -47,21 +76,198 @@
         const memoTypeSelect = document.getElementById('memoType');
         const memoValueInput = document.getElementById('memoValue');
         const resultDiv = document.getElementById('result');
+<<<<<<< feature/debounced-validation-218
+        const validationDiv = document.getElementById('validation');
+
+        let debounceTimer;
+        let currentAbortController;
+
+        function clearValidationState() {
+            validationDiv.style.display = 'none';
+            validationDiv.textContent = '';
+            validationDiv.className = 'validation-status';
+            memoTypeSelect.disabled = false;
+            memoValueInput.disabled = false;
+        }
+
+        async function validateAddress(value) {
+            if (!value) {
+                clearValidationState();
+                return;
+            }
+
+            // Cancel any in-flight request
+            if (currentAbortController) {
+                currentAbortController.abort();
+            }
+            currentAbortController = new AbortController();
+
+            validationDiv.style.display = 'block';
+            validationDiv.textContent = 'Validating...';
+            validationDiv.className = 'validation-status validating';
+
+            try {
+                const response = await fetch('/api/validate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ address: value }),
+                    signal: currentAbortController.signal,
+                });
+
+                if (!response.ok) {
+                    throw new Error('Validation failed');
+                }
+
+                const result = await response.json();
+
+                // Use server response properties instead of client-side detection
+                validationDiv.className = 'validation-status';
+                if (result.valid) {
+                    if (result.type === 'C') {
+                        validationDiv.innerHTML = '<span class="error">Contract addresses are not supported</span><span class="badge badge-c">Rejected</span>';
+                        memoTypeSelect.disabled = false;
+                        memoValueInput.disabled = false;
+                    } else if (result.type === 'M') {
+                        validationDiv.innerHTML = '<span class="success">Muxed address detected</span><span class="badge badge-m">M-Address</span>';
+                        memoTypeSelect.disabled = true;
+                        memoValueInput.disabled = true;
+                        memoTypeSelect.value = 'none';
+                        memoValueInput.value = '';
+                    } else if (result.type === 'G') {
+                        validationDiv.innerHTML = '<span class="success">Valid Stellar address</span>';
+                        memoTypeSelect.disabled = false;
+                        memoValueInput.disabled = false;
+                    }
+                } else {
+                    validationDiv.innerHTML = '<span class="error">Invalid address format</span>';
+                    memoTypeSelect.disabled = false;
+                    memoValueInput.disabled = false;
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    return; // Request was cancelled
+                }
+                validationDiv.innerHTML = '<span class="error">Validation failed</span>';
+                validationDiv.className = 'validation-status error';
+                memoTypeSelect.disabled = false;
+                memoValueInput.disabled = false;
+            }
+        }
+
+        addressInput.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            const value = addressInput.value.trim();
+            if (!value) {
+                clearValidationState();
+                return;
+            }
+            debounceTimer = setTimeout(() => {
+                validateAddress(value);
+            }, 300);
+        });
+
+        addressInput.addEventListener('paste', (e) => {
+            clearTimeout(debounceTimer);
+            const pastedData = (e.clipboardData || window.clipboardData).getData('text').trim();
+            addressInput.value = pastedData;
+            validateAddress(pastedData);
+        });
+=======
+        const bannerContainer = document.getElementById('banner-container');
+>>>>>>> dev
 
         submitBtn.addEventListener('click', async () => {
             const data = {
-                address: addressInput.value,
+                address: addressInput.value.trim(),
                 memoType: memoTypeSelect.value,
-                memoValue: memoValueInput.value
+                memoValue: memoValueInput.value.trim()
             };
 
-            // Logic will be implemented later
+<<<<<<< feature/debounced-validation-218
             resultDiv.style.display = 'block';
-            resultDiv.textContent = 'Submission received (placeholder)';
+            resultDiv.textContent = 'Submission received for: ' + data.address;
+=======
+            if (!data.address) {
+                alert('Please enter a Stellar address.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `<div class="warning warning-error">${result.error || 'An error occurred'}</div>`;
+                    bannerContainer.innerHTML = '';
+                    return;
+                }
+
+                displayResult(result);
+            } catch (error) {
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `<div class="warning warning-error">Failed to connect to the server.</div>`;
+                bannerContainer.innerHTML = '';
+            }
         });
 
+        function displayResult(result) {
+            resultDiv.style.display = 'block';
+            bannerContainer.innerHTML = '';
+
+            let html = `
+                <div class="result-item">
+                    <span class="result-label">Routing Source:</span> 
+                    <code>${result.routingSource}</code>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Routing ID:</span> 
+                    <code>${result.routingId || 'None'}</code>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">Destination Base Account:</span> 
+                    <code>${result.destinationBaseAccount || 'None'}</code>
+                </div>
+            `;
+
+            if (result.warnings && result.warnings.length > 0) {
+                html += '<div class="result-label">Warnings:</div>';
+                result.warnings.forEach(w => {
+                    const severityClass = `warning-${w.severity}`;
+                    html += `<div class="warning ${severityClass}">${w.message}</div>`;
+                });
+            }
+
+            resultDiv.innerHTML = html;
+
+            if (result.routingSource === 'none') {
+                bannerContainer.innerHTML = `
+                    <div class="banner-none">
+                        No routing information detected. This withdrawal may not be attributable to a specific user.
+                    </div>
+                `;
+            }
+        }
+
         addressInput.addEventListener('input', () => {
-            // Logic for disabling memo for M-addresses will be implemented later
+            const val = addressInput.value.trim();
+            if (val.startsWith('M')) {
+                memoTypeSelect.value = 'none';
+                memoTypeSelect.disabled = true;
+                memoValueInput.value = '';
+                memoValueInput.disabled = true;
+            } else {
+                memoTypeSelect.disabled = false;
+                memoValueInput.disabled = false;
+            }
+>>>>>>> dev
         });
     </script>
 </body>
