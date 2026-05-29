@@ -2,10 +2,31 @@
 
 This example demonstrates how the standard JavaScript Number() constructor silently corrupts Stellar muxed account IDs when they exceed the 2^53 safety threshold (Number.MAX_SAFE_INTEGER). The stellar-address-kit library prevents this data loss by utilizing BigInt for all 64-bit integer operations, ensuring full precision for every Stellar account ID.
 
+## Features
+- Scans and detects integer precision loss in JavaScript `Number` usages
+- Demonstrates safe handling of > 2^53 IDs using the kit's BigInt implementation
+- JSON output mode for programmatic integration
+
+## Use Cases
+- Auditing existing Node.js or TypeScript codebases for BigInt vulnerability
+- Testing edge cases for muxed accounts exceeding the standard integer limit
+
 ## Quick Start
 
+```bash
 npm install
+# Run with default high-ID address
 npx tsx src/main.ts
+
+# Run with default high-ID address and JSON output
+npx tsx src/main.ts --json
+
+# Run with a specific muxed address
+npx tsx src/main.ts M...
+
+# Run with JSON output for a specific muxed address
+npx tsx src/main.ts --json M...
+```
 
 ## Why This Matters
 

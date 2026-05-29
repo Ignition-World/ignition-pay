@@ -13,16 +13,14 @@ class ReceivePanel extends StatefulWidget {
 }
 
 class _ReceivePanelState extends State<ReceivePanel> {
-  final _addressController = TextEditingController(
-    text: 'GA7QYNF7SOWQ3GLR2B6RS22TBGZAOR6KLYH4PA5ZAM73A3H4K2HZZSQU',
-  );
+  final _addressController = TextEditingController();
   final _idController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _idController.addListener(_onChanged);
     _addressController.addListener(_onChanged);
+    _idController.addListener(_onChanged);
   }
 
   void _onChanged() {
@@ -42,20 +40,21 @@ class _ReceivePanelState extends State<ReceivePanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Generate M-Address',
+            'Deposit Details',
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 8),
           const Text(
-            'Create a muxed address for deposits. This combines your G-address with a user ID.',
+            'Enter a User ID if using a G-address, or see the decoded details of an M-address.',
             style: TextStyle(color: Colors.grey),
           ),
           const SizedBox(height: 24),
           TextField(
             controller: _addressController,
             decoration: const InputDecoration(
-              labelText: 'Base G-Address',
+              labelText: 'Base Address (G-address or M-address)',
               border: OutlineInputBorder(),
+              hintText: 'e.g. G... or M...',
             ),
           ),
           const SizedBox(height: 16),
@@ -81,7 +80,7 @@ class _ReceivePanelState extends State<ReceivePanel> {
                     style: const TextStyle(color: Colors.red),
                   );
                 }
-                return const Text('Enter details to generate');
+                return const Text('Enter details or use address at top');
               },
             ),
           ),
@@ -138,3 +137,4 @@ class _ReceivePanelState extends State<ReceivePanel> {
     super.dispose();
   }
 }
+

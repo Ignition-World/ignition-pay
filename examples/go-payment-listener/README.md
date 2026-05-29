@@ -2,6 +2,18 @@
 
 A production-grade reference implementation demonstrating deposit routing correctness using the `stellar-address-kit`. This daemon monitors a Stellar Horizon testnet account, extracts routing information from incoming payments, and handles compliance warnings with structured severity tiers.
 
+## Features
+- Automated deposit monitoring for Stellar Horizon accounts
+- Reconciles both M-addresses and G-addresses with Memo IDs seamlessly
+- Comprehensive compliance logging and warning system (Info, Warn, Error)
+- Resilient architecture with exponential backoff and graceful shutdown
+- Prometheus metrics integration for observability
+
+## Use Cases
+- Running backend deposit reconciliation services for exchanges or anchors
+- Automating compliance checks for incoming Stellar payments
+- Reference architecture for production-grade Go services interacting with Stellar Horizon
+
 ## What this demonstrates
 This example shows how a backend exchange or payment service can reliably reconcile deposits. It specifically highlights the kit's ability to:
 - Resolve **M-addresses** to their base G-address and routing ID.

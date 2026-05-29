@@ -1,0 +1,2 @@
+# python-compliance-logger dependencies
+# Currently using standard library only (csv, subprocess, json)
