@@ -10,10 +10,12 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "jest --runInBand --forceExit"
+    "test": "jest --runInBand --forceExit",
+    "bridge:install": "npm install --prefix . stellar-address-kit @stellar/stellar-sdk"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "^13.0.0"
+    "@stellar/stellar-sdk": "^13.3.0",
+    "stellar-address-kit": "^1.0.1"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
@@ -25,6 +27,8 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "testMatch": ["**/tests/**/*.test.ts"]
+    "testMatch": [
+      "**/tests/**/*.test.ts"
+    ]
   }
 }

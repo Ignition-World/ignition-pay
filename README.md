@@ -58,6 +58,13 @@ console.log(result.address); // "GA7Q..."
 console.log(result.routingId); // "123"
 ```
 
+## Core Features
+
+- **Spec-First Design**: Guaranteed identical behavior across all three languages via a shared test vector suite.
+- **Precision Safety**: Built-in protection against 64-bit integer precision loss in JavaScript and Flutter Web.
+- **Warning System**: Discriminated unions (TS) or structured objects (Go/Dart) to catch edge cases like numeric `MEMO_TEXT`.
+- **Zero Dependencies**: Core logic is lightweight and has zero external dependencies beyond standard library features.
+
 ## Maintainers
 
 - **codeZeus** - [GitHub](https://github.com/codeZe-us)
