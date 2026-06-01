@@ -444,10 +444,10 @@ packages:
     dependency: "direct main"
     description:
       name: stellar_address_kit
-      sha256: "18b51e6c75dd9c638e5c69f7292797f019a5b53583418d641fb0febf9db70ee5"
+      sha256: "8184e5e623c4895583c7233c463c3dd7787e0de8feae0d245723035cfa076abc"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.0"
+    version: "1.0.1"
   stream_channel:
     dependency: transitive
     description:
