@@ -5,17 +5,34 @@ on:
     paths:
       - "packages/core-dart/**"
       - "spec/**"
+  push:
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        channel: [stable, beta]
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ matrix.channel }}
       - id: setup-chrome
         uses: browser-actions/setup-chrome@v1
       - run: cd packages/core-dart && dart pub get
-      - run: cd packages/core-dart && dart test
+      - run: cd packages/core-dart && dart test --coverage=coverage
+      - name: Generate coverage report
+        run: |
+          cd packages/core-dart
+          dart pub global activate coverage
+          dart run coverage:format_coverage --lcov --in=coverage --out=coverage.lcov --packages=.dart_tool/package_config.json --report-on=lib
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: packages/core-dart/coverage.lcov
+          flags: dart
       - run: cd packages/core-dart && dart test test/web_compat --platform chrome
         env:
           CHROME_EXECUTABLE: ${{ steps.setup-chrome.outputs.chrome-path }}
