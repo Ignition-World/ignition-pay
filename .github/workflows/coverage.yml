@@ -1,0 +1,22 @@
+name: coverage
+
+on:
+  workflow_run:
+    workflows: [ci-dart, ci-ts, ci-go, ci-flutter]
+    types: [completed]
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: coverage
+      - name: Upload combined coverage
+        uses: codecov/codecov-action@v4
+        with:
+          directory: coverage
+          flags: combined
