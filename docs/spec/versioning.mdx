@@ -1,16 +1,34 @@
----
-title: "Spec Versioning"
-description: "How we manage changes to the routing logic."
----
+# Versioning
 
-The `spec_version` field in `vectors.json` follows Semantic Versioning (SemVer) rules.
+## Specification Versioning
 
-## Versioning Rules
+The Stellar Address Kit specification follows its own versioning independent of implementation packages.
 
-- **Patch (1.0.x)**: Added non-breaking test vectors or updated documentation.
-- **Minor (1.x.0)**: Added new features that are backward-compatible (e.g., a new warning code).
-- **Major (x.0.0)**: Breaking changes to the routing logic or output schema.
+### Spec File Structure
 
-<Info>
-  All implementation packages must release the same version number to guarantee cross-language compliance.
-</Info>
+```
+spec/
+├── vectors.json      # Test vectors
+├── schema.json       # Vector schema definition
+└── validate.js       # Validation script
+```
+
+### Adding New Vectors
+
+1. Add new test cases to `spec/vectors.json`
+2. Ensure they pass `node spec/validate.js`
+3. Update all implementations to pass the new vectors
+
+### Compatibility Matrix
+
+| Spec Version | core-ts | core-dart | core-go |
+|-------------|---------|-----------|---------|
+| 1.0.0       | 0.1.0   | 0.1.0     | 0.1.0   |
+
+## Package Version Compatibility
+
+All core packages maintain synchronized versions when sharing the same API surface. When a new feature is added:
+1. Update spec vectors first
+2. Implement in TypeScript (reference implementation)
+3. Port to Dart and Go
+4. Version bump all packages together
