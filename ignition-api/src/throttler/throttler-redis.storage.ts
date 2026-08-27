@@ -15,8 +15,14 @@ export class ThrottlerRedisStorage
   implements ThrottlerStorage, OnModuleDestroy
 {
   private readonly redis: Redis;
+  private readonly keyPrefix: string;
 
   constructor(private readonly config: ConfigService) {
+    const environment = this.config.get<string>('NODE_ENV', 'development');
+    this.keyPrefix = this.config.get<string>(
+      'REDIS_KEY_PREFIX',
+      `throttle:${environment}`,
+    );
     this.redis = new Redis(
       this.config.get<string>('REDIS_URL', 'redis://localhost:6379'),
     );
@@ -35,8 +41,8 @@ export class ThrottlerRedisStorage
     blockDuration: number,
     throttlerName: string,
   ): Promise<ThrottlerRecord> {
-    const blockKey = `throttle_block:${throttlerName}:${key}`;
-    const hitKey = `throttle_hits:${throttlerName}:${key}`;
+    const blockKey = `${this.keyPrefix}:block:${throttlerName}:${key}`;
+    const hitKey = `${this.keyPrefix}:hits:${throttlerName}:${key}`;
 
     const blocked = await this.redis.get(blockKey);
     if (blocked) {
