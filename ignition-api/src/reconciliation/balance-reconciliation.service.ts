@@ -1,13 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { QUEUE_EMAIL } from '../queue/queue.constants';
+import { EMAIL_JOB_SEND_NOTIFICATION } from '../queue/queue.jobs';
 import { Horizon } from '@stellar/stellar-sdk';
 import BigNumber from 'bignumber.js';
 import { ReconciliationStatus } from '@prisma/client';
-import { InjectQueue } from '@nestjs/bull';
-import type { Queue } from 'bull';
-import { QUEUE_EMAIL } from '../queue/queue.constants';
-import { EMAIL_JOB_SEND_NOTIFICATION } from '../queue/queue.jobs';
 
 interface Wallet {
   id: string;
@@ -23,6 +24,7 @@ export class BalanceReconciliationService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
     @InjectQueue(QUEUE_EMAIL) private readonly emailQueue: Queue,
   ) {
     const horizonUrl =
@@ -91,23 +93,13 @@ export class BalanceReconciliationService {
     const driftAmount = dbBalance.minus(onChainBalance).abs();
     const DRIFT_THRESHOLD = new BigNumber('0.00001');
 
-    // configure alert recipients from environment (comma-separated)
-    const rawRecipients = process.env.RECONCILIATION_ALERT_EMAIL || '';
-    const alertRecipients = rawRecipients
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-
     if (driftAmount.isGreaterThan(DRIFT_THRESHOLD)) {
       this.logger.warn(
         `Balance drift detected for Wallet ${wallet.id}! DB: ${dbBalance.toFixed(7)}, On-Chain: ${onChainBalance.toFixed(7)}`,
       );
 
-      // Prepare alert metadata to persist in the discrepancy notes column
-      const alertTimestamp = new Date().toISOString();
-      const alertMeta = alertRecipients.length
-        ? `Alert queued to ${alertRecipients.join(', ')} at ${alertTimestamp}`
-        : `No alert recipients configured (checked at ${alertTimestamp})`;
+      // Persist the discrepancy and capture the resulting record id
+      let discrepancyRecord: { id: string } | null = null;
 
       await this.prisma.$transaction(async (tx) => {
         const existing = await tx.balanceDiscrepancy.findFirst({
@@ -118,19 +110,17 @@ export class BalanceReconciliationService {
         });
 
         if (existing) {
-          await tx.balanceDiscrepancy.update({
+          const updated = await tx.balanceDiscrepancy.update({
             where: { id: existing.id },
             data: {
               dbBalance: dbBalance.toFixed(7),
               onChainBalance: onChainBalance.toFixed(7),
               driftAmount: driftAmount.toFixed(7),
-              notes: existing.notes
-                ? `${existing.notes}\n${alertMeta}`
-                : alertMeta,
             },
           });
+          discrepancyRecord = { id: updated.id } as any;
         } else {
-          await tx.balanceDiscrepancy.create({
+          const created = await tx.balanceDiscrepancy.create({
             data: {
               walletId: wallet.id,
               stellarAddress: wallet.stellarAddress,
@@ -138,35 +128,42 @@ export class BalanceReconciliationService {
               onChainBalance: onChainBalance.toFixed(7),
               driftAmount: driftAmount.toFixed(7),
               status: ReconciliationStatus.PENDING,
-              notes: alertMeta,
             },
           });
+          discrepancyRecord = { id: created.id } as any;
         }
       });
 
-      // Enqueue non-blocking notification emails to configured recipients
-      if (alertRecipients.length > 0) {
-        const subject = `Balance drift detected for wallet ${wallet.id}`;
-        const body = `A balance discrepancy was detected for wallet ${wallet.id} (address ${wallet.stellarAddress}).\n\nDB balance: ${dbBalance.toFixed(7)}\nOn-chain balance: ${onChainBalance.toFixed(7)}\nDrift: ${driftAmount.toFixed(7)}\n\nPlease investigate.`;
+      // Alert configured recipients (if any)
+      try {
+        const raw = this.config.get<string>('ALERT_EMAILS') || '';
+        const recipients = raw
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
 
-        for (const to of alertRecipients) {
-          this.emailQueue
-            .add(EMAIL_JOB_SEND_NOTIFICATION, {
-              to,
-              subject,
-              body,
-            })
-            .catch((err: unknown) => {
-              this.logger.error(
-                `Failed to enqueue reconciliation alert to ${to} for wallet ${wallet.id}`,
-                err instanceof Error ? err.stack : String(err),
-              );
-            });
+        if (recipients.length === 0) {
+          this.logger.warn('No ALERT_EMAILS configured — discrepancy not emailed');
+        } else {
+          const subject = `Balance discrepancy detected for wallet ${wallet.id}`;
+          const body = `A balance discrepancy was detected for wallet ${wallet.id} (address ${wallet.stellarAddress}).\n\nDB balance: ${dbBalance.toFixed(7)}\nOn-chain balance: ${onChainBalance.toFixed(7)}\nDrift: ${driftAmount.toFixed(7)}\nDiscrepancy id: ${discrepancyRecord?.id ?? 'unknown'}`;
+
+          await Promise.all(
+            recipients.map((to) =>
+              this.emailQueue.add(EMAIL_JOB_SEND_NOTIFICATION, {
+                to,
+                subject,
+                body,
+              }),
+            ),
+          );
+
+          this.logger.log(
+            `Queued alert emails to ${recipients.length} recipient(s) for discrepancy ${discrepancyRecord?.id}`,
+          );
         }
-      } else {
-        this.logger.warn(
-          `Reconciliation drift detected but no alert recipients configured. Set RECONCILIATION_ALERT_EMAIL to enable notifications. Wallet ${wallet.id}`,
-        );
+      } catch (err) {
+        this.logger.error('Failed to enqueue discrepancy alert emails:', err?.stack || err);
       }
 
       return true;

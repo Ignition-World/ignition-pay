@@ -1,11 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BalanceReconciliationService } from './balance-reconciliation.service';
+import { getQueueToken } from '@nestjs/bull';
+import { QUEUE_EMAIL } from '../queue/queue.constants';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReconciliationStatus } from '@prisma/client';
 
 describe('BalanceReconciliationService', () => {
   let service: BalanceReconciliationService;
   let prismaMock: jest.Mocked<PrismaService>;
+  let queueMock: { add: jest.Mock };
+  let configMock: Partial<ConfigService>;
 
   beforeEach(async () => {
     prismaMock = {
@@ -20,6 +25,9 @@ describe('BalanceReconciliationService', () => {
       $transaction: jest.fn(),
     } as any;
 
+    queueMock = { add: jest.fn().mockResolvedValue({ id: 'job-1' }) };
+    configMock = { get: jest.fn().mockReturnValue('') };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BalanceReconciliationService,
@@ -27,12 +35,12 @@ describe('BalanceReconciliationService', () => {
           provide: PrismaService,
           useValue: prismaMock,
         },
+        { provide: getQueueToken(QUEUE_EMAIL), useValue: queueMock },
+        { provide: ConfigService, useValue: configMock },
       ],
     }).compile();
 
-    service = module.get<BalanceReconciliationService>(
-      BalanceReconciliationService,
-    );
+    service = module.get<BalanceReconciliationService>(BalanceReconciliationService);
   });
 
   it('should be defined', () => {
