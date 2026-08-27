@@ -2,6 +2,35 @@ import { useState, useCallback, useEffect } from 'react'
 import type { OptimisticTransaction } from '../models'
 import { generateOptimisticId } from '../models'
 
+const STORAGE_KEY = 'ignition_optimistic_txs'
+
+let globalOptimisticEntries: OptimisticTransaction[] = []
+let listeners = new Set<() => void>()
+
+function getInitialEntries(): OptimisticTransaction[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const item = window.localStorage.getItem(STORAGE_KEY)
+    return item ? JSON.parse(item) : []
+  } catch (error) {
+    console.error('Error reading localStorage', error)
+    return []
+  }
+}
+
+// Initialize on first load
+if (typeof window !== 'undefined') {
+  globalOptimisticEntries = getInitialEntries()
+}
+
+function updateEntries(newEntries: OptimisticTransaction[]) {
+  globalOptimisticEntries = newEntries
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(globalOptimisticEntries))
+  }
+  listeners.forEach((listener) => listener())
+}
+
 /**
  * Manages optimistic pending transaction entries.
  *
@@ -14,7 +43,20 @@ import { generateOptimisticId } from '../models'
  * This gives users instant feedback while maintaining consistency.
  */
 export function useOptimisticTransactions() {
-  const [optimisticEntries, setOptimisticEntries] = useState<OptimisticTransaction[]>([])
+  const [optimisticEntries, setOptimisticEntries] = useState<OptimisticTransaction[]>(
+    globalOptimisticEntries,
+  )
+
+  useEffect(() => {
+    setOptimisticEntries(globalOptimisticEntries)
+    const listener = () => {
+      setOptimisticEntries(globalOptimisticEntries)
+    }
+    listeners.add(listener)
+    return () => {
+      listeners.delete(listener)
+    }
+  }, [])
 
   /**
    * Adds an optimistic entry to the pending list immediately.
@@ -24,7 +66,12 @@ export function useOptimisticTransactions() {
    * @returns The generated optimisticId for tracking reconciliation
    */
   const addOptimisticEntry = useCallback(
-    (entry: Omit<OptimisticTransaction, 'optimisticId' | 'isOptimistic' | 'status' | 'submittedAt'>) => {
+    (
+      entry: Omit<
+        OptimisticTransaction,
+        'optimisticId' | 'isOptimistic' | 'status' | 'submittedAt'
+      >,
+    ) => {
       const optimisticId = generateOptimisticId()
       const optimisticEntry: OptimisticTransaction = {
         ...entry,
@@ -33,7 +80,7 @@ export function useOptimisticTransactions() {
         submittedAt: Date.now(),
         isOptimistic: true,
       }
-      setOptimisticEntries((prev) => [optimisticEntry, ...prev])
+      updateEntries([optimisticEntry, ...globalOptimisticEntries])
       return optimisticId
     },
     [],
@@ -46,7 +93,7 @@ export function useOptimisticTransactions() {
    * @param optimisticId The optimistic ID to remove
    */
   const reconcileEntry = useCallback((optimisticId: string) => {
-    setOptimisticEntries((prev) => prev.filter((e) => e.optimisticId !== optimisticId))
+    updateEntries(globalOptimisticEntries.filter((e) => e.optimisticId !== optimisticId))
   }, [])
 
   /**
@@ -56,7 +103,7 @@ export function useOptimisticTransactions() {
    * @param optimisticId The optimistic ID to remove
    */
   const removeOptimisticEntry = useCallback((optimisticId: string) => {
-    setOptimisticEntries((prev) => prev.filter((e) => e.optimisticId !== optimisticId))
+    updateEntries(globalOptimisticEntries.filter((e) => e.optimisticId !== optimisticId))
   }, [])
 
   /**
@@ -69,9 +116,12 @@ export function useOptimisticTransactions() {
     const CHECK_INTERVAL_MS = 60 * 1000 // check every minute
 
     const cleanup = setInterval(() => {
-      setOptimisticEntries((prev) =>
-        prev.filter((e) => Date.now() - e.submittedAt < STALE_THRESHOLD_MS),
+      const filtered = globalOptimisticEntries.filter(
+        (e) => Date.now() - e.submittedAt < STALE_THRESHOLD_MS,
       )
+      if (filtered.length !== globalOptimisticEntries.length) {
+        updateEntries(filtered)
+      }
     }, CHECK_INTERVAL_MS)
 
     return () => clearInterval(cleanup)
@@ -84,3 +134,4 @@ export function useOptimisticTransactions() {
     removeOptimisticEntry,
   }
 }
+
