@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:stellar_address_kit/stellar_address_kit.dart';
 import '../../../../core/widgets/address_badge.dart';
@@ -36,6 +37,15 @@ class _AnalyzePanelState extends State<AnalyzePanel> {
         );
   }
 
+  Future<void> _pasteAddress() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted) return;
+    final text = data?.text?.trim();
+    if (text != null && text.isNotEmpty) {
+      _addressController.text = text;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -55,9 +65,14 @@ class _AnalyzePanelState extends State<AnalyzePanel> {
           const SizedBox(height: 24),
           TextField(
             controller: _addressController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Destination Address (G, M, or C)',
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.content_paste),
+                tooltip: 'Paste from clipboard',
+                onPressed: _pasteAddress,
+              ),
             ),
           ),
           const SizedBox(height: 16),
