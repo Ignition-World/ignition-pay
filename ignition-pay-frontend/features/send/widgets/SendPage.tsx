@@ -20,6 +20,7 @@ import { validateAmount, type SendableAsset } from '@/features/send/models'
 import { checkTrustline, type TrustlineCheck } from '@/features/send/services'
 import { useOptimisticTransactions } from '@/features/history/state'
 import { useToast } from '@/components/ui/toast'
+import { API_BASE_URLS, API_PREFIX } from '@/lib/constants/api'
 
 const ADDRESS_KIND_LABELS = {
   publicKey: 'Stellar account',
@@ -106,10 +107,9 @@ export function SendPage() {
     setStep('review')
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setIsSubmitting(true)
 
-    // Step 1: Add optimistic entry BEFORE async call
     const txId = addOptimisticEntry({
       type: 'sent',
       asset: formData.asset,
@@ -120,41 +120,41 @@ export function SendPage() {
     setOptimisticId(txId)
 
     try {
-      // Step 2: Submit to backend (simulated for now)
-      // TODO: Replace with actual submitTransaction API call
-      // const result = await submitTransaction({
-      //   fromWalletId: currentUser.walletId,
-      //   toWalletId: formData.recipient,
-      //   amount: formData.amount,
-      //   assetCode: formData.asset,
-      // })
+      const senderWalletId = process.env.NEXT_PUBLIC_SENDER_WALLET_ID
+      if (!senderWalletId) throw new Error('No sender wallet is configured for payments.')
 
-      // Step 3: Simulate successful submission
-      setTimeout(() => {
-        // Step 3: Reconcile — remove optimistic, real entry appears via refetch
-        reconcileEntry(txId)
-        setOptimisticId(null)
-        setStep('confirmed')
-        setIsSubmitting(false)
-        toast.add({
-          title: 'Payment sent',
-          description: `${formData.amount} ${formData.asset} was sent successfully.`,
-          type: 'success',
-        })
-      }, 1500)
+      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || API_BASE_URLS.development).replace(/\/$/, '')
+      const response = await fetch(baseUrl + API_PREFIX + '/payments/' + senderWalletId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          senderWalletId,
+          recipientAddress: formData.recipient,
+          amount: formData.amount,
+          assetCode: formData.asset,
+        }),
+      })
+      if (!response.ok) throw new Error('Payment submission failed (' + response.status + ')')
 
-      // Step 4: In real scenario, invalidate/refetch transaction list
-      // await refetchTransactions()
-    } catch {
-      // Step 5: Remove optimistic entry on failure
+      reconcileEntry(txId)
+      setOptimisticId(null)
+      setStep('confirmed')
+      toast.add({
+        title: 'Payment submitted',
+        description: 'Payment of ' + formData.amount + ' ' + formData.asset + ' was queued.',
+        type: 'success',
+      })
+    } catch (error) {
       removeOptimisticEntry(txId)
       setOptimisticId(null)
-      setIsSubmitting(false)
       toast.add({
         title: 'Transaction failed',
-        description: 'Please try again.',
+        description: error instanceof Error ? error.message : 'Please try again.',
         type: 'error',
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -571,4 +571,3 @@ export function SendPage() {
     </div>
   )
 }
-
