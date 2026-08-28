@@ -15,6 +15,7 @@ import { UserRole } from '@prisma/client';
 import { LoginResponseDto } from '../users/dto/login.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionsService } from './permissions/permissions.service';
+import { SettingsService } from '../settings/settings.service';
 
 // Minimal user shape that AuthTokenService needs to mint/revoke tokens.
 // Allows callers (auth-verify.controller, users.service.login) to pass
@@ -115,7 +116,12 @@ export class AuthTokenService {
      */
     familyId?: string,
   ): Promise<LoginResponseDto> {
+    // Security: revoke any existing refresh tokens for this user before issuing
+    // a new pair. Prevents multiple valid token chains and replay attacks.
     const walletAddress = user.walletAddress ?? '';
+    if (walletAddress) {
+      await this.revokeAllTokensForUser(walletAddress);
+    }
     const fid = familyId ?? randomUUID();
     
     // Get current session settings from database
