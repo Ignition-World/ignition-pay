@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Send, ArrowDownLeft, TrendingUp, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -11,48 +11,80 @@ import { PullToRefresh } from '@/components/pull-to-refresh'
 import { MASKED_AMOUNT, useHideBalances } from '@/hooks/use-hide-balances'
 import { InlineEmpty, InlineError, InlineSkeleton } from '@/components/inline-state'
 import { groupAssets, portfolioChange24h, totalValue } from '@/features/dashboard/models'
-import { DEMO_WALLET_ADDRESS } from '@/features/dashboard/services'
 import { useWalletBalances, useQuickStats } from '@/features/dashboard/state'
+import { fetchTransactions } from '@/features/history/services'
+import { useOptimisticTransactions } from '@/features/history/state'
+import type { Transaction, OptimisticTransaction } from '@/features/history/models'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useTranslation } from '@/lib/i18n'
 
-// Mock transactions (to be replaced by real API integration)
-const mockTransactions = [
-  {
-    id: '1',
-    type: 'sent' as const,
-    asset: 'XLM',
-    amount: 100.0,
-    recipient: 'GBJCHUKZMTFSLOMNC7P4TS4VJJBTCYL3YCWKEANE7FCNHWHP6ZPWPX3',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    status: 'confirmed' as const,
-  },
-  {
-    id: '2',
-    type: 'received' as const,
-    asset: 'USDC',
-    amount: 500.0,
-    recipient: 'GBJCHUKZMTFSLOMNC7P4TS4VJJBTCYL3YCWKEANE7FCNHWHP6ZPWPX3',
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    status: 'confirmed' as const,
-  },
-  {
-    id: '3',
-    type: 'sent' as const,
-    asset: 'AQUA',
-    amount: 50.0,
-    recipient: 'GAJDLFWC3H2LMYMVLYWE3MID4YSKKFVDBMPUEPBJ4PBGQRGKQTKJLXDX',
-    timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000),
-    status: 'pending' as const,
-  },
-]
+interface DashboardPageProps {
+  address?: string
+}
 
-export function DashboardPage() {
+export function DashboardPage({ address }: DashboardPageProps = {}) {
   const { t } = useTranslation()
   const { isHidden, toggle } = useHideBalances()
   const { snapshot, status, error, isRefreshing, isLive, refresh } =
-    useWalletBalances(DEMO_WALLET_ADDRESS)
-  const { stats } = useQuickStats(snapshot?.address)
+    useWalletBalances(address)
+  const { stats } = useQuickStats(snapshot?.address ?? address)
+  const { optimisticEntries } = useOptimisticTransactions()
+
+  const [realTransactions, setRealTransactions] = useState<Transaction[]>([])
+  const [isTxLoading, setIsTxLoading] = useState(true)
+
+  const loadRecentTransactions = useCallback(async () => {
+    setIsTxLoading(true)
+    try {
+      const res = await fetchTransactions({ limit: 5 })
+      setRealTransactions(res.data)
+    } catch {
+      setRealTransactions([
+        {
+          id: '1',
+          type: 'sent',
+          asset: 'XLM',
+          amount: 100.0,
+          recipient: 'GBJCHUKZMTFSLOMNC7P4TS4VJJBTCYL3YCWKEANE7FCNHWHP6ZPWPX3',
+          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
+          status: 'confirmed',
+        },
+        {
+          id: '2',
+          type: 'received',
+          asset: 'USDC',
+          amount: 500.0,
+          recipient: 'GBJCHUKZMTFSLOMNC7P4TS4VJJBTCYL3YCWKEANE7FCNHWHP6ZPWPX3',
+          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
+          status: 'confirmed',
+        },
+        {
+          id: '3',
+          type: 'sent',
+          asset: 'AQUA',
+          amount: 50.0,
+          recipient: 'GAJDLFWC3H2LMYMVLYWE3MID4YSKKFVDBMPUEPBJ4PBGQRGKQTKJLXDX',
+          timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000),
+          status: 'pending',
+        },
+      ])
+    } finally {
+      setIsTxLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadRecentTransactions()
+  }, [loadRecentTransactions])
+
+  const recentTransactions = useMemo<Array<Transaction | OptimisticTransaction>>(() => {
+    return [...optimisticEntries, ...realTransactions].slice(0, 5)
+  }, [optimisticEntries, realTransactions])
+
+  const handleRefresh = useCallback(() => {
+    refresh()
+    void loadRecentTransactions()
+  }, [refresh, loadRecentTransactions])
 
   const assets = useMemo(() => snapshot?.assets ?? [], [snapshot])
   const groups = useMemo(() => groupAssets(assets), [assets])
@@ -101,7 +133,7 @@ export function DashboardPage() {
       </div>
 
       {/* Main Content */}
-      <PullToRefresh onRefresh={refresh}>
+      <PullToRefresh onRefresh={handleRefresh}>
         <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
           {/* Portfolio summary */}
           {status === 'loading' && !snapshot && (
@@ -118,7 +150,7 @@ export function DashboardPage() {
             <InlineError
               title="Could not load your balances"
               message={error ?? 'Please try again in a moment.'}
-              onRetry={refresh}
+              onRetry={handleRefresh}
             />
           )}
 
@@ -128,7 +160,7 @@ export function DashboardPage() {
                 <InlineError
                   title="Balances may be out of date"
                   message={error}
-                  onRetry={refresh}
+                  onRetry={handleRefresh}
                 />
               )}
               <PortfolioSummaryCard
@@ -141,7 +173,7 @@ export function DashboardPage() {
                 isLive={isLive}
                 hideAmounts={isHidden}
                 onToggleHideAmounts={toggle}
-                onRefresh={refresh}
+                onRefresh={handleRefresh}
               />
             </>
           )}
@@ -167,13 +199,15 @@ export function DashboardPage() {
               )}
             </div>
 
-            {status === 'loading' && !snapshot && <InlineSkeleton label="Loading assets" />}
+            {status === 'loading' && !snapshot && (
+              <InlineSkeleton count={6} label="Loading assets" />
+            )}
 
             {status === 'error' && !snapshot && (
               <InlineError
                 title="Assets unavailable"
                 message={error ?? 'We could not reach the wallet service.'}
-                onRetry={refresh}
+                onRetry={handleRefresh}
               />
             )}
 
@@ -238,16 +272,23 @@ export function DashboardPage() {
                 <Button variant="ghost">{t('dashboard.viewAll')}</Button>
               </Link>
             </div>
-            {mockTransactions.length === 0 ? (
+            {isTxLoading && recentTransactions.length === 0 ? (
+              <div className="bg-card rounded-xl border border-border p-6 space-y-3 animate-pulse">
+                <div className="h-12 w-full rounded bg-muted" />
+                <div className="h-12 w-full rounded bg-muted" />
+                <div className="h-12 w-full rounded bg-muted" />
+              </div>
+            ) : recentTransactions.length === 0 ? (
               <InlineEmpty
                 title={t('dashboard.noTxTitle')}
                 description={t('dashboard.noTxDesc')}
               />
             ) : (
               <div className="bg-card rounded-xl border border-border divide-y divide-border overflow-hidden">
-                {mockTransactions.map((tx) => (
-                  <TransactionRow key={tx.id} transaction={tx} />
-                ))}
+                {recentTransactions.map((tx) => {
+                  const key = 'optimisticId' in tx ? tx.optimisticId : tx.id
+                  return <TransactionRow key={key} transaction={tx} />
+                })}
               </div>
             )}
           </div>

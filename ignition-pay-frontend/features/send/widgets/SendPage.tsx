@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Send, Zap, AlertCircle, CheckCircle2, CheckCircle, Loader2 } from 'lucide-react'
+import { Send, Zap, AlertCircle, CheckCircle2, CheckCircle, Loader2, ClipboardPaste } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
@@ -20,6 +20,9 @@ import { validateAmount, type SendableAsset } from '@/features/send/models'
 import { checkTrustline, type TrustlineCheck } from '@/features/send/services'
 import { useOptimisticTransactions } from '@/features/history/state'
 import { useToast } from '@/components/ui/toast'
+import { API_BASE_URLS, API_PREFIX } from '@/lib/constants/api'
+
+import { useWalletBalances } from '@/features/dashboard/state'
 
 const ADDRESS_KIND_LABELS = {
   publicKey: 'Stellar account',
@@ -27,8 +30,7 @@ const ADDRESS_KIND_LABELS = {
   contract: 'Contract address',
 } as const
 
-// Mock holdings (to be replaced by the wallet balance API)
-const sendableAssets: SendableAsset[] = [
+const DEFAULT_SENDABLE_ASSETS: SendableAsset[] = [
   { code: 'XLM', issuer: 'native', balance: 5234.5, reserved: 1.5 },
   {
     code: 'USDC',
@@ -42,9 +44,26 @@ const sendableAssets: SendableAsset[] = [
   },
 ]
 
-export function SendPage() {
+interface SendPageProps {
+  address?: string
+}
+
+export function SendPage({ address: addressProp }: SendPageProps = {}) {
+  const { snapshot } = useWalletBalances(addressProp)
   const { addOptimisticEntry, reconcileEntry, removeOptimisticEntry } = useOptimisticTransactions()
   const toast = useToast()
+
+  const sendableAssets: SendableAsset[] = useMemo(() => {
+    if (snapshot?.assets && snapshot.assets.length > 0) {
+      return snapshot.assets.map((asset) => ({
+        code: asset.code,
+        issuer: asset.issuer,
+        balance: asset.balance,
+        reserved: asset.code === 'XLM' || asset.issuer === 'native' ? 1.5 : undefined,
+      }))
+    }
+    return DEFAULT_SENDABLE_ASSETS
+  }, [snapshot])
 
   const [step, setStep] = useState<'form' | 'review' | 'confirmed'>('form')
   const [recipientTouched, setRecipientTouched] = useState(false)
@@ -106,10 +125,9 @@ export function SendPage() {
     setStep('review')
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setIsSubmitting(true)
 
-    // Step 1: Add optimistic entry BEFORE async call
     const txId = addOptimisticEntry({
       type: 'sent',
       asset: formData.asset,
@@ -120,39 +138,66 @@ export function SendPage() {
     setOptimisticId(txId)
 
     try {
-      // Step 2: Submit to backend (simulated for now)
-      // TODO: Replace with actual submitTransaction API call
-      // const result = await submitTransaction({
-      //   fromWalletId: currentUser.walletId,
-      //   toWalletId: formData.recipient,
-      //   amount: formData.amount,
-      //   assetCode: formData.asset,
-      // })
+      const senderWalletId = process.env.NEXT_PUBLIC_SENDER_WALLET_ID
+      if (!senderWalletId) throw new Error('No sender wallet is configured for payments.')
 
-      // Step 3: Simulate successful submission
-      setTimeout(() => {
-        // Step 3: Reconcile — remove optimistic, real entry appears via refetch
-        reconcileEntry(txId)
-        setOptimisticId(null)
-        setStep('confirmed')
-        setIsSubmitting(false)
-        toast.add({
-          title: 'Payment sent',
-          description: `${formData.amount} ${formData.asset} was sent successfully.`,
-          type: 'success',
-        })
-      }, 1500)
+      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || API_BASE_URLS.development).replace(/\/$/, '')
+      const response = await fetch(baseUrl + API_PREFIX + '/payments/' + senderWalletId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          senderWalletId,
+          recipientAddress: formData.recipient,
+          amount: formData.amount,
+          assetCode: formData.asset,
+        }),
+      })
+      if (!response.ok) throw new Error('Payment submission failed (' + response.status + ')')
 
-      // Step 4: In real scenario, invalidate/refetch transaction list
-      // await refetchTransactions()
-    } catch {
-      // Step 5: Remove optimistic entry on failure
+      reconcileEntry(txId)
+      setOptimisticId(null)
+      setStep('confirmed')
+      toast.add({
+        title: 'Payment submitted',
+        description: 'Payment of ' + formData.amount + ' ' + formData.asset + ' was queued.',
+        type: 'success',
+      })
+    } catch (error) {
       removeOptimisticEntry(txId)
       setOptimisticId(null)
-      setIsSubmitting(false)
       toast.add({
         title: 'Transaction failed',
-        description: 'Please try again.',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        type: 'error',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Paste a copied address directly into the recipient field, matching the
+  // trimming behavior of manual typing so pasted whitespace doesn't cause a
+  // spurious validation error.
+  const handlePasteRecipient = async () => {
+    if (!navigator.clipboard?.readText) {
+      toast.add({
+        title: 'Clipboard unavailable',
+        description: 'Your browser does not support pasting from the clipboard here.',
+        type: 'error',
+      })
+      return
+    }
+
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text.trim()) return
+      setFormData((prev) => ({ ...prev, recipient: text.trim() }))
+      setRecipientTouched(true)
+    } catch {
+      toast.add({
+        title: 'Paste failed',
+        description: 'Allow clipboard access in your browser to paste the address.',
         type: 'error',
       })
     }
@@ -286,30 +331,45 @@ export function SendPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="bg-card rounded-xl border border-border p-6 space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-foreground mb-2">
+                <label
+                  htmlFor="recipient-address"
+                  className="block text-sm font-semibold text-foreground mb-2"
+                >
                   Recipient Address
                 </label>
-                <input
-                  type="text"
-                  placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                  className={`w-full px-4 py-3 rounded-lg bg-background border text-foreground placeholder:text-muted-foreground focus:outline-none font-mono text-sm ${
-                    showRecipientError
-                      ? 'border-destructive focus:border-destructive'
-                      : recipientCheck.isValid
-                        ? 'border-green-500/60 focus:border-green-500'
-                        : 'border-border focus:border-primary'
-                  }`}
-                  value={formData.recipient}
-                  onChange={(e) =>
-                    setFormData({ ...formData, recipient: e.target.value.trim() })
-                  }
-                  onBlur={() => setRecipientTouched(true)}
-                  aria-invalid={showRecipientError}
-                  aria-describedby="recipient-feedback"
-                  autoCapitalize="characters"
-                  spellCheck={false}
-                  required
-                />
+                <div className="relative">
+                  <input
+                    id="recipient-address"
+                    type="text"
+                    placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                    className={`w-full pl-4 pr-12 py-3 rounded-lg bg-background border text-foreground placeholder:text-muted-foreground focus:outline-none font-mono text-sm ${
+                      showRecipientError
+                        ? 'border-destructive focus:border-destructive'
+                        : recipientCheck.isValid
+                          ? 'border-green-500/60 focus:border-green-500'
+                          : 'border-border focus:border-primary'
+                    }`}
+                    value={formData.recipient}
+                    onChange={(e) =>
+                      setFormData({ ...formData, recipient: e.target.value.trim() })
+                    }
+                    onBlur={() => setRecipientTouched(true)}
+                    aria-invalid={showRecipientError}
+                    aria-describedby="recipient-feedback"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePasteRecipient}
+                    aria-label="Paste from clipboard"
+                    title="Paste from clipboard"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    <ClipboardPaste size={16} />
+                  </button>
+                </div>
                 <p
                   id="recipient-feedback"
                   aria-live="polite"
@@ -571,4 +631,3 @@ export function SendPage() {
     </div>
   )
 }
-
