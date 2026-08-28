@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 
 import { INTERACTIVE_TIMEOUT_MS } from '@/features/anchors/services'
+import { MAX_DECIMAL_PLACES } from '@/features/send/models'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -240,13 +241,23 @@ export default function Sep24Wizard({
                     {state.assetCode === 'USDC' ? '' : '$'}
                   </span>
                   <input
-                    type="number"
+                    type="text" inputMode="decimal"
                     step="0.01"
                     min="0"
                     placeholder="0.00"
                     className="w-full pl-10 pr-4 py-3 rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary text-lg font-semibold"
                     value={state.amount}
-                    onChange={(e) => onSetAmount(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (val === "") {
+                        onSetAmount(val)
+                        return
+                      }
+                      const regex = new RegExp(`^\\d*\\.?\\d{0,${MAX_DECIMAL_PLACES}}$`)
+                      if (regex.test(val)) {
+                        onSetAmount(val)
+                      }
+                    }}
                     required
                   />
                 </div>
@@ -523,3 +534,4 @@ export default function Sep24Wizard({
     </Dialog>
   )
 }
+

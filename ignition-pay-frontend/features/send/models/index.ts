@@ -28,7 +28,7 @@ export interface AmountValidationResult {
 }
 
 /** Stellar amounts carry at most 7 decimal places. */
-const MAX_DECIMAL_PLACES = 7
+export const MAX_DECIMAL_PLACES = 7
 
 export function validateAmount(value: string, asset: SendableAsset): AmountValidationResult {
   const trimmed = value.trim()
