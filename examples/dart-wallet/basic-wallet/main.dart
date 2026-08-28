@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:stellar/stellar.dart';
 
 void main() async {
@@ -14,7 +15,8 @@ void main() async {
     print('Balance: ${balance.assetType} ${balance.balance}');
   }
 
-  final destination = 'GBSH7WNSDU5K3J2I5H3K2M6QZQKJ3PZ7PJ3VJ6QZQKJ3PZ7PJ3VJ6';
+  print('Enter recipient address:');
+  final destination = stdin.readLineSync()!;
   final transaction = TransactionBuilder(account)
     .addOperation(PaymentOperation(
       destination: destination,
