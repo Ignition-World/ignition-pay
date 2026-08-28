@@ -11,16 +11,10 @@ import {
   RefreshCw,
   ExternalLink,
 } from 'lucide-react'
+import Link from 'next/link'
 import type { Transaction, OptimisticTransaction } from '@/features/history/models'
 import { isOptimisticTransaction } from '@/features/history/models'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet'
+// The row now navigates to a dedicated transaction detail page instead of opening an inline sheet.
 import { useTranslation } from '@/lib/i18n'
 
 interface TransactionRowProps {
@@ -119,9 +113,8 @@ export function TransactionRow({ transaction }: TransactionRowProps) {
     : '#'
 
   return (
-    <Sheet>
-      <SheetTrigger asChild>
-    <div
+    <Link
+      href={`/transactions/${transaction.id}`}
       className={`flex items-center justify-between py-4 px-4 rounded-lg transition-colors border ${
         isOptimistic
           ? 'bg-yellow-500/5 border-yellow-500/30 hover:bg-yellow-500/10'
@@ -156,74 +149,6 @@ export function TransactionRow({ transaction }: TransactionRowProps) {
         <p className="text-xs text-muted-foreground">{formattedDate}</p>
         <TransactionStatusBadge transaction={transaction} />
       </div>
-    </div>
-      </SheetTrigger>
-      
-      <SheetContent side="right">
-        <SheetHeader>
-          <SheetTitle>{t('transactionRow.details')}</SheetTitle>
-          <SheetDescription>
-            {t('transactionRow.detailsDesc')}
-          </SheetDescription>
-        </SheetHeader>
-        
-        <div className="mt-6 space-y-6">
-          {/* Status */}
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">{t('transactionRow.status')}</span>
-            <TransactionStatusBadge transaction={transaction} />
-          </div>
-
-          {/* Amount */}
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-muted-foreground">{t('transactionRow.amount')}</span>
-            <p className={`text-xl font-bold ${isSent ? 'text-red-500' : 'text-green-500'}`}>
-              {isSent ? '-' : '+'}{amount.toFixed(4)} {asset}
-            </p>
-          </div>
-
-          {/* Timestamp */}
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-muted-foreground">{t('transactionRow.dateTime')}</span>
-            <p className="text-sm text-foreground">{formattedDate}</p>
-          </div>
-
-          {/* Fee */}
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-muted-foreground">{t('transactionRow.networkFee')}</span>
-            <p className="text-sm text-foreground">{networkFee}</p>
-          </div>
-
-          {/* Recipient */}
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-muted-foreground">{isSent ? t('transactionRow.to') : t('transactionRow.from')}</span>
-            <p className="text-sm font-mono break-all bg-muted/30 p-2 rounded-md">
-              {recipient}
-            </p>
-          </div>
-
-          {/* Hash & Explorer Link */}
-          {!isOptimistic && transaction.txHash && (
-            <div className="flex flex-col gap-1 pt-4 border-t border-border">
-              <span className="text-sm text-muted-foreground">Transaction Hash</span>
-              <div className="flex items-center justify-between gap-2 mt-1">
-                <p className="text-xs font-mono break-all flex-1">
-                  {transaction.txHash}
-                </p>
-                <a
-                  href={explorerLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 hover:bg-muted rounded-md transition-colors text-primary flex-shrink-0"
-                  title="View on Stellar Expert"
-                >
-                  <ExternalLink size={16} />
-                </a>
-              </div>
-            </div>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
+    </Link>
   )
 }

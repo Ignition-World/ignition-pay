@@ -1,5 +1,6 @@
-'use client'
+"use client"
 
+import React, { useEffect, useState } from 'react'
 import { ArrowUpRight, ArrowDownLeft, Lock, History, RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -21,7 +22,7 @@ const statusDotStyles = {
   Offline: 'bg-rose-500',
 } as const
 
-const anchors = [
+const DEFAULT_ANCHORS = [
   {
     id: 1,
     name: 'StellarX',
@@ -75,6 +76,7 @@ const anchors = [
     status: 'Offline',
   },
 ]
+
 
 const HISTORY_STATUS_ICON: Record<string, typeof CheckCircle2> = {
   completed: CheckCircle2,
@@ -147,6 +149,27 @@ function HistoryRow({ item }: { item: AnchorHistoryItem }) {
 export default function AnchorsPage() {
   const wizard = useSep24Wizard()
   const history = useAnchorHistory({ page: 1, limit: 10 })
+
+  const [anchors, setAnchors] = useState(DEFAULT_ANCHORS)
+
+  useEffect(() => {
+    let mounted = true
+    fetch('/api/anchors')
+      .then((r) => {
+        if (!r.ok) throw new Error('no anchors')
+        return r.json()
+      })
+      .then((data) => {
+        if (!mounted) return
+        if (Array.isArray(data) && data.length > 0) setAnchors(data)
+      })
+      .catch(() => {
+        // keep defaults on error
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const operationFilter = history.query.operation
   const totalPages = Math.ceil(history.total / history.limit)
