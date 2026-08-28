@@ -22,14 +22,15 @@ import { useOptimisticTransactions } from '@/features/history/state'
 import { useToast } from '@/components/ui/toast'
 import { API_BASE_URLS, API_PREFIX } from '@/lib/constants/api'
 
+import { useWalletBalances } from '@/features/dashboard/state'
+
 const ADDRESS_KIND_LABELS = {
   publicKey: 'Stellar account',
   muxedAccount: 'Muxed account',
   contract: 'Contract address',
 } as const
 
-// Mock holdings (to be replaced by the wallet balance API)
-const sendableAssets: SendableAsset[] = [
+const DEFAULT_SENDABLE_ASSETS: SendableAsset[] = [
   { code: 'XLM', issuer: 'native', balance: 5234.5, reserved: 1.5 },
   {
     code: 'USDC',
@@ -43,9 +44,26 @@ const sendableAssets: SendableAsset[] = [
   },
 ]
 
-export function SendPage() {
+interface SendPageProps {
+  address?: string
+}
+
+export function SendPage({ address: addressProp }: SendPageProps = {}) {
+  const { snapshot } = useWalletBalances(addressProp)
   const { addOptimisticEntry, reconcileEntry, removeOptimisticEntry } = useOptimisticTransactions()
   const toast = useToast()
+
+  const sendableAssets: SendableAsset[] = useMemo(() => {
+    if (snapshot?.assets && snapshot.assets.length > 0) {
+      return snapshot.assets.map((asset) => ({
+        code: asset.code,
+        issuer: asset.issuer,
+        balance: asset.balance,
+        reserved: asset.code === 'XLM' || asset.issuer === 'native' ? 1.5 : undefined,
+      }))
+    }
+    return DEFAULT_SENDABLE_ASSETS
+  }, [snapshot])
 
   const [step, setStep] = useState<'form' | 'review' | 'confirmed'>('form')
   const [recipientTouched, setRecipientTouched] = useState(false)

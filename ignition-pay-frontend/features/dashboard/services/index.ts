@@ -119,6 +119,22 @@ export function isLiveDataConfigured(): boolean {
 
 export const DEMO_WALLET_ADDRESS = 'GBKXNRTZQVD6CNOQNRZVMJVQ4ZQ5K2NQXJ6K4VJKTQVJVQVJVQVJVQ'
 
+/**
+ * Resolves the active wallet address from prop, session storage, or demo address.
+ */
+export function resolveWalletAddress(providedAddress?: string): string {
+  if (providedAddress && providedAddress.trim().length > 0) {
+    return providedAddress.trim()
+  }
+  if (typeof window !== 'undefined') {
+    const stored = sessionStorage.getItem('ignition:wallet:address')
+    if (stored && stored.trim().length > 0) {
+      return stored.trim()
+    }
+  }
+  return DEMO_WALLET_ADDRESS
+}
+
 /** Stand-in snapshot used until the wallet API is wired to the dashboard. */
 export function demoWalletSnapshot(): WalletSnapshot {
   return {

@@ -12,6 +12,7 @@ import {
   type QuickStatsData,
   isLiveDataConfigured,
   subscribeToWalletStream,
+  resolveWalletAddress,
 } from '@/features/dashboard/services'
 import { ErrorMessage, ErrorCode } from '@/lib/constants'
 
@@ -33,7 +34,8 @@ export interface WalletBalancesState {
  * Keeps dashboard balances fresh: loads a snapshot, then subscribes to the
  * backend notification stream and live Stellar DEX price feeds.
  */
-export function useWalletBalances(address: string): WalletBalancesState {
+export function useWalletBalances(addressProp?: string): WalletBalancesState {
+  const address = resolveWalletAddress(addressProp)
   const [snapshot, setSnapshot] = useState<WalletSnapshot | null>(null)
   const [status, setStatus] = useState<BalanceStatus>('loading')
   const [error, setError] = useState<string | null>(null)
@@ -150,13 +152,13 @@ export interface UseQuickStatsState {
 /**
  * Hook to retrieve live, dynamic Quick Stats (Total Transactions, Network Fee Saved, Account Age).
  */
-export function useQuickStats(address?: string): UseQuickStatsState {
+export function useQuickStats(addressProp?: string): UseQuickStatsState {
+  const address = resolveWalletAddress(addressProp)
   const [stats, setStats] = useState<QuickStatsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    if (!address) return
     setLoading(true)
     try {
       const data = await fetchQuickStats(address)
