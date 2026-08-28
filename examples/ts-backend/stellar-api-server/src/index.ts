@@ -20,6 +20,8 @@ interface PaymentRequest {
   amount: string;
 }
 
+const HORIZON_URL = process.env.HORIZON_URL || 'https://horizon-testnet.stellar.org';
+
 app.post('/api/payments', async (req, res) => {
   try {
     const { destination, amount } = req.body as PaymentRequest;
@@ -31,12 +33,29 @@ app.post('/api/payments', async (req, res) => {
 
 app.get('/api/accounts/:address', async (req, res) => {
   try {
-    res.json({
-      address: req.params.address,
-      balances: [{ type: 'native', balance: '10000.0' }],
+    const address = req.params.address;
+    const response = await fetch(`${HORIZON_URL}/accounts/${address});
+    if (!response.ok) {
+      if (response.status === 404) {
+        return res.status(404).json({ success: false, error: 'Account not found' });
+      }
+      return res.status(400).json({ success: false, error: 'Failed to fetch account from Horizon' });
+    }
+    const data = await response.json();
+    const balances = (data.balances || []).map((balance: any) => {
+      if (balance.asset_type === 'native') {
+        return { type: 'native', balance: balance.balance };
+      }
+      return {
+        type: balance.asset_type,
+        asset_code: balance.asset_code,
+        asset_issuer: balance.asset_issuer,
+        balance: balance.balance,
+      };
     });
+    res.json({ address, balances });
   } catch (error: any) {
-    res.status(404).json({ success: false, error: 'Account not found' });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -64,7 +83,7 @@ app.post('/sep38/execute', (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing quote_id' });
     }
     const quote = quotes.get(quote_id);
-    if (!quote || new Date(quote.expires_at) <= naw Date()) {
+    if (!quote || new Date(quote.expires_at) <= new Date()) {
       return res.status(400).json({ success: false, error: 'Quote not found or expired' });
     }
     quotes.delete(quote_id); // one-time use
