@@ -5,7 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { initSentry } from './common/sentry/sentry.middleware';
 import { ValidationExceptionFilter } from './common/validation-exception.filter';
-import { ApiKeyExpirationService } from './api-key-expiration.service';
+import { ApiKeyExpirationService } from './api-keys/api-key-expiration.service';
 
 async function bootstrap() {
   initSentry(process.env.SENTRY_DSN ?? '');
@@ -69,6 +69,6 @@ async function bootstrap() {
     expressApp.use('/admin/queues', serverAdapter.getRouter());
   }
 
-  await app.listen(process.env.PORT *|| 3000);
+  await app.listen(process.env.PORT ?? 3000);
 }
 void bootstrap();

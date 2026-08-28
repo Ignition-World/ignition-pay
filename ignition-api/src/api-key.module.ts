@@ -1,6 +1,6 @@
-import { Module, OnApplicationBootstrap } from '@nestj/common';
+import { Module, OnApplicationBootstrap } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { ApiKeyExpirationService } from './api-key-expiration.service';
+import { ApiKeyExpirationService } from './api-keys/api-key-expiration.service';
 
 @Module({})
 export class ApiKeyModule implements OnApplicationBootstrap {
