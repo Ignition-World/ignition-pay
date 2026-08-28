@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Send, Zap, AlertCircle, CheckCircle2, CheckCircle, Loader2 } from 'lucide-react'
+import { Send, Zap, AlertCircle, CheckCircle2, CheckCircle, Loader2, ClipboardPaste } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
@@ -158,6 +158,33 @@ export function SendPage() {
     }
   }
 
+  // Paste a copied address directly into the recipient field, matching the
+  // trimming behavior of manual typing so pasted whitespace doesn't cause a
+  // spurious validation error.
+  const handlePasteRecipient = async () => {
+    if (!navigator.clipboard?.readText) {
+      toast.add({
+        title: 'Clipboard unavailable',
+        description: 'Your browser does not support pasting from the clipboard here.',
+        type: 'error',
+      })
+      return
+    }
+
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text.trim()) return
+      setFormData((prev) => ({ ...prev, recipient: text.trim() }))
+      setRecipientTouched(true)
+    } catch {
+      toast.add({
+        title: 'Paste failed',
+        description: 'Allow clipboard access in your browser to paste the address.',
+        type: 'error',
+      })
+    }
+  }
+
   const handleReset = () => {
     setStep('form')
     setRecipientTouched(false)
@@ -286,30 +313,45 @@ export function SendPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="bg-card rounded-xl border border-border p-6 space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-foreground mb-2">
+                <label
+                  htmlFor="recipient-address"
+                  className="block text-sm font-semibold text-foreground mb-2"
+                >
                   Recipient Address
                 </label>
-                <input
-                  type="text"
-                  placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                  className={`w-full px-4 py-3 rounded-lg bg-background border text-foreground placeholder:text-muted-foreground focus:outline-none font-mono text-sm ${
-                    showRecipientError
-                      ? 'border-destructive focus:border-destructive'
-                      : recipientCheck.isValid
-                        ? 'border-green-500/60 focus:border-green-500'
-                        : 'border-border focus:border-primary'
-                  }`}
-                  value={formData.recipient}
-                  onChange={(e) =>
-                    setFormData({ ...formData, recipient: e.target.value.trim() })
-                  }
-                  onBlur={() => setRecipientTouched(true)}
-                  aria-invalid={showRecipientError}
-                  aria-describedby="recipient-feedback"
-                  autoCapitalize="characters"
-                  spellCheck={false}
-                  required
-                />
+                <div className="relative">
+                  <input
+                    id="recipient-address"
+                    type="text"
+                    placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                    className={`w-full pl-4 pr-12 py-3 rounded-lg bg-background border text-foreground placeholder:text-muted-foreground focus:outline-none font-mono text-sm ${
+                      showRecipientError
+                        ? 'border-destructive focus:border-destructive'
+                        : recipientCheck.isValid
+                          ? 'border-green-500/60 focus:border-green-500'
+                          : 'border-border focus:border-primary'
+                    }`}
+                    value={formData.recipient}
+                    onChange={(e) =>
+                      setFormData({ ...formData, recipient: e.target.value.trim() })
+                    }
+                    onBlur={() => setRecipientTouched(true)}
+                    aria-invalid={showRecipientError}
+                    aria-describedby="recipient-feedback"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePasteRecipient}
+                    aria-label="Paste from clipboard"
+                    title="Paste from clipboard"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    <ClipboardPaste size={16} />
+                  </button>
+                </div>
                 <p
                   id="recipient-feedback"
                   aria-live="polite"
