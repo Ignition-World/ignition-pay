@@ -172,6 +172,33 @@ export function HistoryPage() {
     ...transactions,
   ]
 
+  const handleExport = useCallback(() => {
+    if (visibleTransactions.length === 0) {
+      toast.add({ title: 'No data', description: 'There are no transactions to export.', type: 'error' })
+      return
+    }
+
+    const headers = ['ID', 'Type', 'Amount', 'Asset', 'Status', 'Date', 'Recipient', 'Transaction Hash']
+    const csvContent = [
+      headers.join(','),
+      ...visibleTransactions.map(tx => {
+        const id = 'optimisticId' in tx ? tx.optimisticId : tx.id
+        const date = new Date(tx.timestamp).toISOString()
+        const hash = 'txHash' in tx && tx.txHash ? tx.txHash : ''
+        return `${id},${tx.type},${tx.amount},${tx.asset},${tx.status},${date},${tx.recipient},${hash}`
+      })
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', 'transactions.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }, [visibleTransactions, toast])
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -253,7 +280,7 @@ export function HistoryPage() {
               ))}
             </select>
 
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleExport}>
               <Download size={16} className="mr-2" />
               Export
             </Button>
