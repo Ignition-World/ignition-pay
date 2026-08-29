@@ -8,6 +8,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Dispute, DisputeStatus } from './entities/dispute.entity';
 import { Donation, DonationStatus } from '../donations/entities/donation.entity';
+import { Wallet } from '../wallets/entities/wallet.entity';
+import { Campaign } from '../campaigns/entities/campaign.entity';
+import { Transaction, TransactionStatus } from '../transactions/entities/transaction.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ResolveDisputeDto, DisputeResolutionOutcome } from './dto/resolve-dispute.dto';
 
@@ -26,7 +29,8 @@ export class DisputesService {
 
   /**
    * Resolves an open dispute, updates the linked donation status (if refunded),
-   * and dispatches notifications to both donor and recipient.
+   * reconciles associated ledger state (wallet balances, campaign raised amount,
+   * reversal transaction record), and dispatches notifications to both donor and recipient.
    */
   async resolveDispute(
     disputeId: string,
@@ -40,7 +44,15 @@ export class DisputesService {
     try {
       const dispute = await queryRunner.manager.findOne(Dispute, {
         where: { id: disputeId },
-        relations: ['donation', 'donor', 'recipient'],
+        relations: [
+          'donation',
+          'donation.campaign',
+          'donor',
+          'donor.wallet',
+          'recipient',
+          'recipient.wallet',
+          'campaign',
+        ],
       });
 
       if (!dispute) {
@@ -57,8 +69,66 @@ export class DisputesService {
 
       if (dto.outcome === DisputeResolutionOutcome.REFUNDED) {
         dispute.status = DisputeStatus.RESOLVED_REFUNDED;
-        donation.status = DonationStatus.REFUNDED;
-        await queryRunner.manager.save(Donation, donation);
+        if (donation) {
+          donation.status = DonationStatus.REFUNDED;
+          await queryRunner.manager.save(Donation, donation);
+
+          const refundAmount = Number(donation.amount || 0);
+
+          if (refundAmount > 0) {
+            // 1. Reconcile Donor Wallet (Credit)
+            const donorWallet =
+              dispute.donor?.wallet ||
+              (dispute.donor?.balance !== undefined ? dispute.donor : null);
+            if (donorWallet) {
+              donorWallet.balance = Number(donorWallet.balance || 0) + refundAmount;
+              await queryRunner.manager.save(Wallet, donorWallet);
+            }
+
+            // 2. Reconcile Recipient Wallet (Debit)
+            const recipientWallet =
+              dispute.recipient?.wallet ||
+              (dispute.recipient?.balance !== undefined ? dispute.recipient : null);
+            if (recipientWallet) {
+              recipientWallet.balance = Math.max(
+                0,
+                Number(recipientWallet.balance || 0) - refundAmount,
+              );
+              await queryRunner.manager.save(Wallet, recipientWallet);
+            }
+
+            // 3. Reconcile Campaign Raised Amount (Decrement)
+            const campaign = dispute.campaign || donation.campaign;
+            if (campaign) {
+              campaign.raisedAmount = Math.max(
+                0,
+                Number(campaign.raisedAmount || 0) - refundAmount,
+              );
+              await queryRunner.manager.save(Campaign, campaign);
+            }
+
+            // 4. Record Reversal Transaction in Ledger
+            const refundTxData = {
+              fromWalletId: recipientWallet?.id || dispute.recipient?.id || 'unknown',
+              toWalletId: donorWallet?.id || dispute.donor?.id || 'unknown',
+              amount: refundAmount,
+              assetCode: donation.assetCode || 'XLM',
+              status: TransactionStatus.COMPLETED,
+              metadata: {
+                type: 'DISPUTE_REFUND',
+                disputeId: dispute.id,
+                donationId: donation.id,
+                notes: dto.resolutionNotes,
+              },
+            };
+
+            const refundTx = queryRunner.manager.create
+              ? queryRunner.manager.create(Transaction, refundTxData)
+              : refundTxData;
+
+            await queryRunner.manager.save(Transaction, refundTx);
+          }
+        }
       } else {
         dispute.status = DisputeStatus.RESOLVED_REJECTED;
       }
@@ -93,15 +163,16 @@ export class DisputesService {
 
     await Promise.all([
       this.notificationsService.send({
-        recipientId: dispute.donor.id,
+        recipientId: dispute.donor?.id || dispute.filerId,
         subject: `Dispute Resolved: ${isRefunded ? 'Refund Processed' : 'Dispute Closed'}`,
-        body: `Your dispute for donation #${dispute.donation.id} has been resolved. Outcome: ${outcome}.`,
+        body: `Your dispute for donation #${dispute.donation?.id} has been resolved. Outcome: ${outcome}.`,
       }),
       this.notificationsService.send({
-        recipientId: dispute.recipient.id,
-        subject: `Dispute Update for Donation #${dispute.donation.id}`,
-        body: `The dispute filed on donation #${dispute.donation.id} has been resolved with outcome: ${outcome}.`,
+        recipientId: dispute.recipient?.id,
+        subject: `Dispute Update for Donation #${dispute.donation?.id}`,
+        body: `The dispute filed on donation #${dispute.donation?.id} has been resolved with outcome: ${outcome}.`,
       }),
     ]);
   }
 }
+

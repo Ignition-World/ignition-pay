@@ -16,7 +16,7 @@ export function isValidDecimalAmount(value: string): boolean {
 export function validateDecimalAmount(value: string): void {
   if (!isValidDecimalAmount(value)) {
     throw new Error(
-      Invalid amount "". Must be a positive decimal with at most 7 decimal places.,
+      `Invalid amount "${value}". Must be a positive decimal with at most 7 decimal places.`,
     );
   }
-}
+}
