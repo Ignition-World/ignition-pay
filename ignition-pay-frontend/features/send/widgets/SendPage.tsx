@@ -16,8 +16,8 @@ import {
   type MemoType,
 } from '@/lib/stellar/memo'
 import { AssetAmountPicker } from '@/components/asset-amount-picker'
-import { validateAmount, type SendableAsset } from '@/features/send/models'
-import { checkTrustline, type TrustlineCheck } from '@/features/send/services'
+import { validateAmount, type SendableAsset, type NetworkFeeEstimate } from '@/features/send/models'
+import { checkTrustline, estimateTransactionFee, type TrustlineCheck } from '@/features/send/services'
 import { useOptimisticTransactions } from '@/features/history/state'
 import { useToast } from '@/components/ui/toast'
 import { API_BASE_URLS, API_PREFIX } from '@/lib/constants/api'
@@ -76,14 +76,16 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
   })
   const [trustline, setTrustline] = useState<TrustlineCheck | null>(null)
   const [isCheckingTrustline, setIsCheckingTrustline] = useState(false)
+  const [estimatedFee, setEstimatedFee] = useState<NetworkFeeEstimate | null>(null)
+  const [isEstimatingFee, setIsEstimatingFee] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [optimisticId, setOptimisticId] = useState<string | null>(null)
 
   const selectedAsset =
     sendableAssets.find((asset) => asset.code === formData.asset) ?? sendableAssets[0]
   const amountCheck = useMemo(
-    () => validateAmount(formData.amount, selectedAsset),
-    [formData.amount, selectedAsset],
+    () => validateAmount(formData.amount, selectedAsset, estimatedFee?.feeInXlm),
+    [formData.amount, selectedAsset, estimatedFee?.feeInXlm],
   )
 
   // Verify the recipient can hold the asset once the review step is reached, so
@@ -105,6 +107,29 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
 
     return () => controller.abort()
   }, [step, formData.recipient, selectedAsset.code, selectedAsset.issuer])
+
+  // Dynamically estimate network fee based on network conditions and transaction complexity
+  useEffect(() => {
+    if (step !== 'review') return
+
+    const controller = new AbortController()
+    setIsEstimatingFee(true)
+
+    const operationCount = 1
+
+    estimateTransactionFee({ operationCount, signal: controller.signal })
+      .then((fee) => {
+        if (!controller.signal.aborted) setEstimatedFee(fee)
+      })
+      .catch(() => {
+        // Fallback is handled inside estimateTransactionFee
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsEstimatingFee(false)
+      })
+
+    return () => controller.abort()
+  }, [step, formData.asset, formData.recipient])
 
   const recipientCheck = useMemo(
     () => validateStellarAddress(formData.recipient),
@@ -241,7 +266,9 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
               </div>
               <div>
                 <p className="text-muted-foreground">Network Fee</p>
-                <p className="text-foreground font-semibold">0.00001 XLM</p>
+                <p className="text-foreground font-semibold">
+                  {estimatedFee?.formattedFee ?? '0.00001 XLM'}
+                </p>
               </div>
             </div>
             <div className="flex gap-3">
@@ -287,41 +314,25 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
       <div className="max-w-2xl mx-auto px-6 py-8">
         {/* Progress Steps */}
         <div className="flex items-center justify-center gap-4 mb-12">
-          <div
-            className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold transition-all ${
-              step === 'form' || step === 'review' || step === 'confirmed'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
+          <div className="flex items-center justify-center w-10 h-10 rounded-full font-semibold transition-all bg-primary text-primary-foreground">
             1
           </div>
           <div
             className={`flex-1 h-1 transition-all ${
-              step === 'review' || step === 'confirmed' ? 'bg-primary' : 'bg-muted'
+              step === 'review' ? 'bg-primary' : 'bg-muted'
             }`}
           />
           <div
             className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold transition-all ${
-              step === 'review' || step === 'confirmed'
+              step === 'review'
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted text-muted-foreground'
             }`}
           >
             2
           </div>
-          <div
-            className={`flex-1 h-1 transition-all ${
-              step === 'confirmed' ? 'bg-primary' : 'bg-muted'
-            }`}
-          />
-          <div
-            className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold transition-all ${
-              step === 'confirmed'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
+          <div className="flex-1 h-1 transition-all bg-muted" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-full font-semibold transition-all bg-muted text-muted-foreground">
             3
           </div>
         </div>
@@ -530,7 +541,16 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
                 </div>
                 <div className="border-t border-border pt-4 flex items-center justify-between">
                   <span className="text-muted-foreground">Network Fee</span>
-                  <span className="font-semibold text-foreground">0.00001 XLM</span>
+                  {isEstimatingFee ? (
+                    <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <Loader2 size={14} className="animate-spin" />
+                      Estimating…
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-foreground">
+                      {estimatedFee?.formattedFee ?? '0.00001 XLM'}
+                    </span>
+                  )}
                 </div>
                 <div className="border-t border-border pt-4 flex items-center justify-between">
                   <span className="text-muted-foreground">Recipient trustline</span>
