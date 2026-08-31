@@ -7,6 +7,7 @@ import {
   spendableBalance,
   validateAmount,
   type SendableAsset,
+  MAX_DECIMAL_PLACES,
 } from '@/features/send/models'
 
 interface AssetAmountPickerProps {
@@ -80,7 +81,17 @@ export function AssetAmountPicker({
             placeholder="0.00"
             className={`h-auto px-4 py-3 ${showError ? 'border-destructive' : ''}`}
             value={amount}
-            onChange={(event) => onAmountChange(event.target.value)}
+            onChange={(event) => {
+              const val = event.target.value
+              if (val === "") {
+                onAmountChange(val)
+                return
+              }
+              const regex = new RegExp(`^\\d*\\.?\\d{0,${MAX_DECIMAL_PLACES}}$`)
+              if (regex.test(val)) {
+                onAmountChange(val)
+              }
+            }}
             aria-invalid={showError}
             aria-describedby="amount-feedback"
             required
@@ -102,3 +113,4 @@ export function AssetAmountPicker({
     </div>
   )
 }
+
