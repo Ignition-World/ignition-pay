@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Send, Zap, AlertCircle, CheckCircle2, CheckCircle, Loader2, ClipboardPaste } from 'lucide-react'
+import { Send, Zap, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
@@ -21,8 +21,10 @@ import { checkTrustline, type TrustlineCheck } from '@/features/send/services'
 import { useOptimisticTransactions } from '@/features/history/state'
 import { useToast } from '@/components/ui/toast'
 import { API_BASE_URLS, API_PREFIX } from '@/lib/constants/api'
-
 import { useWalletBalances } from '@/features/dashboard/state'
+import { useContacts, useRecentRecipients } from '@/features/send/state/recipients'
+import { RecipientInput } from './RecipientInput'
+import { SaveContactDialog } from './SaveContactDialog'
 
 const ADDRESS_KIND_LABELS = {
   publicKey: 'Stellar account',
@@ -52,6 +54,9 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
   const { snapshot } = useWalletBalances(addressProp)
   const { addOptimisticEntry, reconcileEntry, removeOptimisticEntry } = useOptimisticTransactions()
   const toast = useToast()
+  const { contacts, saveContact } = useContacts()
+  const { recents, recordRecipient } = useRecentRecipients()
+  const [saveContactAddress, setSaveContactAddress] = useState<string | null>(null)
 
   const sendableAssets: SendableAsset[] = useMemo(() => {
     if (snapshot?.assets && snapshot.assets.length > 0) {
@@ -156,6 +161,7 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
       if (!response.ok) throw new Error('Payment submission failed (' + response.status + ')')
 
       reconcileEntry(txId)
+      recordRecipient(formData.recipient)
       setOptimisticId(null)
       setStep('confirmed')
       toast.add({
@@ -265,6 +271,16 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
   }
 
   return (
+    <>
+    <SaveContactDialog
+      open={saveContactAddress !== null}
+      address={saveContactAddress ?? ''}
+      onClose={() => setSaveContactAddress(null)}
+      onSave={(label, address) => {
+        saveContact(label, address)
+        toast.add({ title: 'Contact saved', description: `"${label}" added to your contacts.`, type: 'success' })
+      }}
+    />
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b border-border bg-card/50 backdrop-blur-sm">
@@ -337,64 +353,24 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
                 >
                   Recipient Address
                 </label>
-                <div className="relative">
-                  <input
-                    id="recipient-address"
-                    type="text"
-                    placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                    className={`w-full pl-4 pr-12 py-3 rounded-lg bg-background border text-foreground placeholder:text-muted-foreground focus:outline-none font-mono text-sm ${
-                      showRecipientError
-                        ? 'border-destructive focus:border-destructive'
-                        : recipientCheck.isValid
-                          ? 'border-green-500/60 focus:border-green-500'
-                          : 'border-border focus:border-primary'
-                    }`}
-                    value={formData.recipient}
-                    onChange={(e) =>
-                      setFormData({ ...formData, recipient: e.target.value.trim() })
-                    }
-                    onBlur={() => setRecipientTouched(true)}
-                    aria-invalid={showRecipientError}
-                    aria-describedby="recipient-feedback"
-                    autoCapitalize="characters"
-                    spellCheck={false}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={handlePasteRecipient}
-                    aria-label="Paste from clipboard"
-                    title="Paste from clipboard"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
-                  >
-                    <ClipboardPaste size={16} />
-                  </button>
-                </div>
-                <p
-                  id="recipient-feedback"
-                  aria-live="polite"
-                  className={`text-xs mt-2 flex items-center gap-1.5 ${
-                    showRecipientError
-                      ? 'text-destructive'
-                      : recipientCheck.isValid
-                        ? 'text-green-500'
-                        : 'text-muted-foreground'
-                  }`}
-                >
-                  {showRecipientError ? (
-                    <>
-                      <AlertCircle size={13} />
-                      {recipientCheck.error}
-                    </>
-                  ) : recipientCheck.isValid && recipientCheck.kind ? (
-                    <>
-                      <CheckCircle size={13} />
-                      Valid {ADDRESS_KIND_LABELS[recipientCheck.kind]} — checksum verified
-                    </>
-                  ) : (
-                    'The Stellar address you want to send funds to'
-                  )}
-                </p>
+                <RecipientInput
+                  value={formData.recipient}
+                  onChange={(address) => {
+                    setFormData((prev) => ({ ...prev, recipient: address }))
+                    setRecipientTouched(true)
+                  }}
+                  onBlur={() => setRecipientTouched(true)}
+                  contacts={contacts}
+                  recents={recents}
+                  isValid={recipientCheck.isValid}
+                  showError={showRecipientError}
+                  errorMessage={recipientCheck.error}
+                  validKindLabel={
+                    recipientCheck.kind ? ADDRESS_KIND_LABELS[recipientCheck.kind] : undefined
+                  }
+                  onPaste={handlePasteRecipient}
+                  onSaveContact={(addr) => setSaveContactAddress(addr)}
+                />
               </div>
 
               <AssetAmountPicker
@@ -629,5 +605,6 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
         )}
       </div>
     </div>
+    </>
   )
 }
