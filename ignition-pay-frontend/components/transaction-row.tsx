@@ -105,16 +105,11 @@ export function TransactionRow({ transaction }: TransactionRowProps) {
   })
 
   const isOptimistic = isOptimisticTransaction(transaction)
-
-  // Determine standard fee
-  const networkFee = '0.00001 XLM'
-  const explorerLink = transaction.txHash
-    ? `https://stellar.expert/explorer/public/tx/${transaction.txHash}`
-    : '#'
+  const txId = isOptimistic ? transaction.optimisticId : transaction.id
 
   return (
     <Link
-      href={`/transactions/${transaction.id}`}
+      href={isOptimistic ? '#' : `/transactions/${txId}`}
       className={`flex items-center justify-between py-4 px-4 rounded-lg transition-colors border ${
         isOptimistic
           ? 'bg-yellow-500/5 border-yellow-500/30 hover:bg-yellow-500/10'

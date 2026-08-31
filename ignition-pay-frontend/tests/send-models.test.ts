@@ -15,6 +15,11 @@ describe('spendableBalance', () => {
     expect(spendableBalance(xlm)).toBeCloseTo(100 - 1.5 - NETWORK_FEE_XLM, 7)
   })
 
+  it('subtracts a custom dynamic network fee when provided', () => {
+    const customFee = 0.00005
+    expect(spendableBalance(xlm, customFee)).toBeCloseTo(100 - 1.5 - customFee, 7)
+  })
+
   it('uses the full balance for issued assets', () => {
     expect(spendableBalance(usdc)).toBe(50)
   })
@@ -57,6 +62,12 @@ describe('validateAmount', () => {
     // 100 XLM less the 1.5 reserve and the 0.00001 fee leaves 98.49999.
     expect(validateAmount('98.49999', xlm).isValid).toBe(true)
     expect(validateAmount('98.5', xlm).isValid).toBe(false)
+  })
+
+  it('accounts for custom dynamic fee when validating native asset amount', () => {
+    const customFee = 0.0001 // 100 XLM - 1.5 - 0.0001 = 98.4999
+    expect(validateAmount('98.4999', xlm, customFee).isValid).toBe(true)
+    expect(validateAmount('98.49991', xlm, customFee).isValid).toBe(false)
   })
 })
 

@@ -1,3 +1,4 @@
+export * from './fee'
 import { API_BASE_URLS, API_ENDPOINTS, API_PREFIX, TIMEOUT } from '@/lib/constants'
 
 export type TrustlineStatus =
