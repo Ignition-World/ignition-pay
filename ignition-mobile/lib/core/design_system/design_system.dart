@@ -4,3 +4,6 @@ export 'app_button.dart';
 export 'app_card.dart';
 export 'shimmer_loader.dart';
 export 'app_network_image.dart';
+export 'app_error_banner.dart';
+export 'haptic_switch.dart';
+export 'haptic_tab_bar.dart';
