@@ -1,11 +1,11 @@
 {
   "name": "@stellar-address-kit/core-ts",
   "version": "0.1.0",
-  "description": "Stellar Address Kit – TypeScript routing extraction (M-address / SEP-0023)",
+  "description": "Stellar Address Kit \u2013 TypeScript routing extraction (M-address / SEP-0023)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "node api.js && tsc",
     "test": "jest --runInBand --forceExit",
     "dev:infra": "docker compose up -d",
     "dev:infra:stop": "docker compose stop",

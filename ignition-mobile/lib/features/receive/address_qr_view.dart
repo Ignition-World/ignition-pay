@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/security/secure_screen_wrapper.dart';
 
 /// Displays the wallet's deposit [address] as a scannable QR tile
 /// alongside a copy-to-clipboard action, for use on `ReceivePage`.
@@ -10,7 +11,8 @@ class AddressQrView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return SecureScreenWrapper(
+      child: Column(
       children: [
         Container(
           width: 200,
@@ -35,6 +37,8 @@ class AddressQrView extends StatelessWidget {
           label: const Text('Copy'),
         ),
       ],
+    ),
     );
   }
 }
+

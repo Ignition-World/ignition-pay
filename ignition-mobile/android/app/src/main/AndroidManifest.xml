@@ -47,6 +47,9 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <meta-data
+            android:name="flutter_secure_flags_enabled"
+            android:value="true" />
     </application>
     <queries>
         <intent>
