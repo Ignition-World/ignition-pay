@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/security/secure_screen_wrapper.dart';
 
 /// Bottom sheet summarizing a pending payment before it is broadcast.
 class SendConfirmationSheet extends StatelessWidget {
@@ -22,8 +23,9 @@ class SendConfirmationSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasMemo = memo != null && memo!.isNotEmpty;
-    return SafeArea(
-      child: Padding(
+    return SecureScreenWrapper(
+      child: SafeArea(
+        child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Review payment', style: Theme.of(context).textTheme.titleLarge),
@@ -38,6 +40,7 @@ class SendConfirmationSheet extends StatelessWidget {
               child: FilledButton(onPressed: onConfirm, child: const Text('Slide to send'))),
         ]),
       ),
+    ),
     );
   }
 

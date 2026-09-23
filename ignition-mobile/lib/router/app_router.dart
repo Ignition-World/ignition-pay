@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../features/home/pages/home_page.dart';
+import '../core/security/secure_screen_wrapper.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
@@ -14,15 +15,19 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/send',
       name: 'send',
-      builder: (context, state) => const Scaffold(
-        body: Center(child: Text('Send Screen')), // replace with SendPage()
+      builder: (context, state) => const SecureScreenWrapper(
+        child: Scaffold(
+          body: Center(child: Text('Send Screen')), // replace with SendPage()
+        ),
       ),
     ),
     GoRoute(
       path: '/receive',
       name: 'receive',
-      builder: (context, state) => const Scaffold(
-        body: Center(child: Text('Receive Screen')), // replace with ReceivePage()
+      builder: (context, state) => const SecureScreenWrapper(
+        child: Scaffold(
+          body: Center(child: Text('Receive Screen')), // replace with ReceivePage()
+        ),
       ),
     ),
     // Deep link: ignitionpay://pay/GABCD123?amount=10&asset=USDC
@@ -35,11 +40,13 @@ final GoRouter appRouter = GoRouter(
         final amount = state.uri.queryParameters['amount'];
         final asset = state.uri.queryParameters['asset'] ?? 'XLM';
         final memo = state.uri.queryParameters['memo'];
-        return Scaffold(
-          body: Center(
-            child: Text('Pay to: $address\nAmount: $amount $asset\nMemo: $memo'),
+        return SecureScreenWrapper(
+          child: Scaffold(
+            body: Center(
+              child: Text('Pay to: $address\nAmount: $amount $asset\nMemo: $memo'),
+            ),
+            // replace with: PayPage(address: address, amount: amount, asset: asset, memo: memo)
           ),
-          // replace with: PayPage(address: address, amount: amount, asset: asset, memo: memo)
         );
       },
     ),
@@ -48,9 +55,11 @@ final GoRouter appRouter = GoRouter(
       name: 'transaction',
       builder: (context, state) {
         final txId = state.pathParameters['id']!;
-        return Scaffold(
-          body: Center(child: Text('Transaction: $txId')),
-          // replace with: TransactionDetailPage(txId: txId)
+        return SecureScreenWrapper(
+          child: Scaffold(
+            body: Center(child: Text('Transaction: $txId')),
+            // replace with: TransactionDetailPage(txId: txId)
+          ),
         );
       },
     ),
