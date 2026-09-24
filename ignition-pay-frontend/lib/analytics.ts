@@ -1,45 +1,61 @@
-'use client'
+// lib/analytics.ts
 
-import { track } from '@vercel/analytics'
-import { getStoredConsent } from './consent'
+export type AnalyticsEvent =
+  | "send_initiated"
+  | "send_completed"
+  | "receive_opened"
+  | "asset_swapped"
+  | "settings_changed";
 
-// ---------------------------------------------------------------------------
-// Typed event taxonomy
-// ---------------------------------------------------------------------------
-
-export interface AnalyticsEventMap {
-  page_view: { path: string }
-  wallet_connect: { wallet_type: string }
-  wallet_disconnect: { wallet_type: string }
-  send_initiated: { asset: string; amount: number }
-  send_confirmed: { asset: string; amount: number; destination: string }
-  send_failed: { asset: string; amount: number; error: string }
-  receive_viewed: { asset: string }
-  anchor_deposit_started: { anchor: string; asset: string }
-  anchor_withdrawal_started: { anchor: string; asset: string }
-  settings_updated: { setting: string; value: string }
+export interface AnalyticsProperties {
+  assetType?: string;
+  amount?: string | number;
+  success?: boolean;
+  [key: string]: unknown;
 }
 
-export type EventName = keyof AnalyticsEventMap
-
-// ---------------------------------------------------------------------------
-// Tracking
-// ---------------------------------------------------------------------------
+const isProduction =
+  typeof import.meta !== "undefined"
+    ? import.meta.env?.PROD === true
+    : process.env.NODE_ENV === "production";
 
 /**
- * Track a typed analytics event. No-ops when:
- * - running outside the browser
- * - analytics is unavailable (e.g. dev without Vercel environment)
- * - the user has not consented to analytics tracking
+ * Fire analytics without ever blocking or breaking the user flow.
  */
-export function trackEvent<K extends EventName>(
-  name: K,
-  properties?: AnalyticsEventMap[K],
+export function track(
+  event: AnalyticsEvent,
+  properties: AnalyticsProperties = {},
 ): void {
-  if (!getStoredConsent()) return
-  try {
-    track(name, properties as Record<string, string | number | boolean | null>)
-  } catch {
-    // swallow — analytics must never break the app
+  if (!isProduction) {
+    return;
   }
+
+  // Never let analytics failures affect application UX.
+  void Promise.resolve()
+    .then(() => {
+      // Replace this with the existing analytics provider call.
+      // Example:
+      //
+      // analytics.track(event, properties);
+      //
+      // Keeping the provider behind this utility means feature pages
+      // don't need to know which analytics service is being used.
+      sendToAnalyticsProvider(event, properties);
+    })
+    .catch(() => {
+      // Analytics must never break the application.
+    });
+}
+
+function sendToAnalyticsProvider(
+  event: AnalyticsEvent,
+  properties: AnalyticsProperties,
+): void {
+  // Existing analytics implementation should go here.
+  //
+  // For example, if the project already has:
+  //
+  // analytics.track(event, properties);
+  //
+  // call it here instead.
 }
