@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/haptic_service.dart';
+
 /// A one-tap button that copies [address] to the clipboard and shows a
 /// transient "Copied" confirmation.
 class CopyAddressButton extends StatefulWidget {
   final String address;
 
-  const CopyAddressButton({super.key, required this.address});
+  /// Haptic service used for the light copy confirmation cue. Defaults to
+  /// [HapticService.instance] so tests can inject a mock.
+  final HapticService? hapticService;
+
+  const CopyAddressButton({
+    super.key,
+    required this.address,
+    this.hapticService,
+  });
 
   @override
   State<CopyAddressButton> createState() => _CopyAddressButtonState();
@@ -17,6 +27,7 @@ class _CopyAddressButtonState extends State<CopyAddressButton> {
 
   Future<void> _copy() async {
     await Clipboard.setData(ClipboardData(text: widget.address));
+    await (widget.hapticService ?? HapticService.instance).lightImpact();
     if (!mounted) return;
     setState(() => _copied = true);
     Future.delayed(const Duration(seconds: 2), () {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/haptic_service.dart';
+
 /// A single saved deposit address the user can choose to display.
 class DepositAddress {
   final String label;
@@ -20,11 +22,16 @@ class DepositAddressSelector extends StatelessWidget {
   final DepositAddress? selected;
   final ValueChanged<DepositAddress> onSelected;
 
+  /// Haptic service used for the selection cue. Defaults to
+  /// [HapticService.instance] so tests can inject a mock.
+  final HapticService? hapticService;
+
   const DepositAddressSelector({
     super.key,
     required this.addresses,
     required this.selected,
     required this.onSelected,
+    this.hapticService,
   });
 
   @override
@@ -42,7 +49,10 @@ class DepositAddressSelector extends StatelessWidget {
               ))
           .toList(),
       onChanged: (value) {
-        if (value != null) onSelected(value);
+        if (value != null) {
+          (hapticService ?? HapticService.instance).selectionClick();
+          onSelected(value);
+        }
       },
     );
   }
