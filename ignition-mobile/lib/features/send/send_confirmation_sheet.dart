@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/security/secure_screen_wrapper.dart';
 
+import '../../core/haptic_service.dart';
+
 /// Bottom sheet summarizing a pending payment before it is broadcast.
 class SendConfirmationSheet extends StatelessWidget {
   final String recipient;
@@ -10,6 +12,10 @@ class SendConfirmationSheet extends StatelessWidget {
   final String? memo;
   final VoidCallback onConfirm;
 
+  /// Haptic service used for the medium confirmation cue. Defaults to
+  /// [HapticService.instance] so tests can inject a mock.
+  final HapticService? hapticService;
+
   const SendConfirmationSheet({
     super.key,
     required this.recipient,
@@ -18,6 +24,7 @@ class SendConfirmationSheet extends StatelessWidget {
     required this.fee,
     this.memo,
     required this.onConfirm,
+    this.hapticService,
   });
 
   @override
@@ -37,7 +44,13 @@ class SendConfirmationSheet extends StatelessWidget {
           const SizedBox(height: 24),
           SizedBox(
               width: double.infinity,
-              child: FilledButton(onPressed: onConfirm, child: const Text('Slide to send'))),
+              child: FilledButton(
+                onPressed: () {
+                  (hapticService ?? HapticService.instance).mediumImpact();
+                  onConfirm();
+                },
+                child: const Text('Slide to send'),
+              )),
         ]),
       ),
     ),

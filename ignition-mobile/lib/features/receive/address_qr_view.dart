@@ -2,12 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/security/secure_screen_wrapper.dart';
 
+import '../../core/haptic_service.dart';
+
 /// Displays the wallet's deposit [address] as a scannable QR tile
 /// alongside a copy-to-clipboard action, for use on `ReceivePage`.
 class AddressQrView extends StatelessWidget {
   final String address;
 
-  const AddressQrView({super.key, required this.address});
+  /// Haptic service used for the light copy confirmation cue. Defaults to
+  /// [HapticService.instance] so tests can inject a mock.
+  final HapticService? hapticService;
+
+  const AddressQrView({
+    super.key,
+    required this.address,
+    this.hapticService,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +39,7 @@ class AddressQrView extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: () {
             Clipboard.setData(ClipboardData(text: address));
+            (hapticService ?? HapticService.instance).lightImpact();
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Address copied')),
             );
