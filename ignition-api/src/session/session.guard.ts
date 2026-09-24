@@ -51,10 +51,7 @@ export class SessionGuard implements CanActivate {
 
     try {
       payload = this.jwt.verify(token, {
-        secret: this.config.get<string>(
-          'JWT_SECRET',
-          'stellaraid-default-secret',
-        ),
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

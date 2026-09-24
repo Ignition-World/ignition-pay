@@ -21,6 +21,7 @@ import { RegisterResponseDto } from './dto/register-response.dto';
 import { SessionService } from '../session/session.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserProfileDto, PublicUserProfileDto } from './dto/user-profile.dto';
+import { UserDashboardDto } from './dto/dashboard.dto';
 import { assertStrongPassword } from './password-policy';
 
 interface PasswordSetupInput {
@@ -103,6 +104,95 @@ export class UsersService {
       totalRaised,
       totalDonated,
       campaignCount: user.campaigns.length,
+    };
+  }
+
+  /**
+   * Get authenticated user's dashboard: profile, wallets, recent
+   * transactions, unread notifications and active campaigns in a single
+   * $transaction with parallel, selectively-projected queries instead of
+   * six sequential round trips.
+   */
+  async getDashboard(walletAddress: string): Promise<UserDashboardDto> {
+    const user = await this.prisma.user.findFirst({
+      where: { walletAddress, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const [profile, wallets, recentTransactions, unreadNotifications, activeCampaigns] =
+      await this.prisma.$transaction([
+        this.prisma.user.findUniqueOrThrow({
+          where: { id: user.id },
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            avatarUrl: true,
+            role: true,
+            kycStatus: true,
+          },
+        }),
+        this.prisma.wallet.findMany({
+          where: { userId: user.id, deletedAt: null },
+          select: { id: true, network: true, balance: true, currency: true, status: true },
+        }),
+        this.prisma.transaction.findMany({
+          where: {
+            OR: [
+              { fromWallet: { userId: user.id } },
+              { toWallet: { userId: user.id } },
+            ],
+          },
+          select: { id: true, amount: true, assetCode: true, status: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        this.prisma.notification.findMany({
+          where: { userId: user.id, isRead: false },
+          select: { id: true, type: true, title: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        this.prisma.campaign.findMany({
+          where: { creatorId: user.id, status: 'ACTIVE' },
+          select: { id: true, title: true, goalAmount: true, raisedAmount: true },
+        }),
+      ]);
+
+    return {
+      profile: {
+        id: profile.id,
+        email: profile.email ?? undefined,
+        displayName: profile.displayName ?? undefined,
+        avatarUrl: profile.avatarUrl ?? undefined,
+        role: profile.role,
+        kycStatus: profile.kycStatus,
+      },
+      wallets: wallets.map((w) => ({
+        id: w.id,
+        network: w.network,
+        balance: w.balance.toString(),
+        currency: w.currency,
+        status: w.status,
+      })),
+      recentTransactions: recentTransactions.map((t) => ({
+        id: t.id,
+        amount: t.amount.toString(),
+        assetCode: t.assetCode,
+        status: t.status,
+        createdAt: t.createdAt,
+      })),
+      unreadNotifications,
+      activeCampaigns: activeCampaigns.map((c) => ({
+        id: c.id,
+        title: c.title,
+        goalAmount: c.goalAmount.toString(),
+        raisedAmount: c.raisedAmount.toString(),
+      })),
     };
   }
 
@@ -370,10 +460,7 @@ export class UsersService {
         sid: session.sessionId,
       },
       {
-        secret: this.config.get<string>(
-          'JWT_SECRET',
-          'stellaraid-default-secret',
-        ),
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
         expiresIn: `${accessTtlSeconds}s`,
       },
     );
@@ -386,10 +473,7 @@ export class UsersService {
     const refreshToken = this.jwt.sign(
       { sub: user.id, sid: session.sessionId },
       {
-        secret: this.config.get<string>(
-          'REFRESH_TOKEN_SECRET',
-          'default-refresh-secret',
-        ),
+        secret: this.config.getOrThrow<string>('REFRESH_TOKEN_SECRET'),
         expiresIn: `${sessionTtlSeconds}s`,
       },
     );
