@@ -1,6 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { NotificationType } from '@prisma/client';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  NotificationPreferences,
+  defaultNotificationPreferences,
+  isChannelEnabled,
+  normalizeNotificationPreferences,
+} from './notification-preferences';
 
 export interface CreateNotificationParams {
   userId: string;
@@ -37,7 +43,79 @@ export class NotificationsService {
    *   either `create` commits) is extremely narrow and is fully protected
    *   by the Redis layer above.
    */
+  /** Read a user's notification preferences, merged over the all-enabled defaults. */
+  async getPreferences(userId: string): Promise<NotificationPreferences> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { preferences: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const stored = (user.preferences as Record<string, unknown> | null)
+      ?.notifications;
+    return normalizeNotificationPreferences(stored);
+  }
+
+  /** Persist a partial notification preference update, merged over existing preferences. */
+  async updatePreferences(
+    userId: string,
+    partial: Record<string, Partial<Record<'email' | 'push' | 'inApp', boolean>>>,
+  ): Promise<NotificationPreferences> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { preferences: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const existingPreferences =
+      (user.preferences as Record<string, unknown> | null) ?? {};
+    const existingNotifications = normalizeNotificationPreferences(
+      existingPreferences.notifications,
+    );
+    const merged = normalizeNotificationPreferences({
+      ...existingNotifications,
+      ...partial,
+    });
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        preferences: {
+          ...existingPreferences,
+          notifications: merged,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return merged;
+  }
+
+  /** Whether a notification type should be delivered on a given channel for this user. */
+  private async channelEnabled(
+    userId: string,
+    type: NotificationType,
+    channel: 'email' | 'push' | 'inApp',
+  ): Promise<boolean> {
+    const preferences = await this.getPreferences(userId).catch(
+      () => defaultNotificationPreferences(),
+    );
+    return isChannelEnabled(preferences, type, channel);
+  }
+
   async create(params: CreateNotificationParams) {
+    if (!(await this.channelEnabled(params.userId, params.type, 'inApp'))) {
+      this.logger.debug(
+        `Notification suppressed by preference: [${params.type}] userId=${params.userId}`,
+      );
+      return null;
+    }
+
     // Idempotency check: skip if a matching notification already exists.
     if (params.relatedId) {
       const existing = await this.prisma.notification.findFirst({
@@ -87,8 +165,27 @@ export class NotificationsService {
       return { count: 0 };
     }
 
+    const allowed = (
+      await Promise.all(
+        paramsList.map(async (params) => ({
+          params,
+          allowed: await this.channelEnabled(
+            params.userId,
+            params.type,
+            'inApp',
+          ),
+        })),
+      )
+    )
+      .filter((entry) => entry.allowed)
+      .map((entry) => entry.params);
+
+    if (allowed.length === 0) {
+      return { count: 0 };
+    }
+
     const result = await this.prisma.notification.createMany({
-      data: paramsList.map((params) => ({
+      data: allowed.map((params) => ({
         userId: params.userId,
         type: params.type,
         title: params.title,

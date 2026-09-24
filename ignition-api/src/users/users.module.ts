@@ -10,12 +10,14 @@ import { SessionModule } from '../session/session.module';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsService } from '../auth/permissions/permissions.service';
 import { PermissionsGuard } from '../auth/permissions/permissions.guard';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     PrismaModule,
     ConfigModule,
     SessionModule,
+    NotificationsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

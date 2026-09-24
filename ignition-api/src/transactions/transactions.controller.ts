@@ -13,6 +13,7 @@ import {
   GetTransactionsQueryDto,
   SubmitTransactionDto,
 } from './dto/get-transactions.dto';
+import { StaleTransactionMonitorService } from './stale-transaction-monitor.service';
 
 
 
@@ -20,7 +21,22 @@ import {
 @ApiBearerAuth()
 @Controller('transactions')
 export class TransactionsController {
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(
+    private readonly transactionsService: TransactionsService,
+    private readonly staleTransactionMonitor: StaleTransactionMonitorService,
+  ) {}
+
+  /**
+   * GET /transactions/stale/count
+   * Admin visibility into transactions past the stale PENDING/PROCESSING thresholds.
+   */
+  @Get('stale/count')
+  @UseGuards(ApiKeyGuard, ApiKeyScopeGuard)
+  @RequireScope('read')
+  @ApiOperation({ summary: 'Count of stale PENDING/PROCESSING transactions' })
+  getStaleCount() {
+    return this.staleTransactionMonitor.countStale();
+  }
 
   /**
    * GET /transactions

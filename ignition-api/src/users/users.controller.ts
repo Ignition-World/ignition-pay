@@ -44,6 +44,8 @@ import { RequirePermissions } from '../auth/permissions/require-permissions.deco
 import { Permission } from '../auth/permissions/permissions.map';
 import { AuthExceptionFilter } from '../auth/filters/auth-exception.filter';
 import { AuthErrorResponseDto } from '../common/dto/error-response.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { UpdateNotificationPreferencesDto } from '../notifications/dto/notification-preferences.dto';
 
 interface AuthenticatedRequest {
   user: {
@@ -71,6 +73,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly permissionsService: PermissionsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   /**
@@ -174,6 +177,40 @@ export class UsersController {
     @Request() req: AuthenticatedRequest,
   ): Promise<UserProfileDto> {
     return this.usersService.getMyProfile(resolveWalletAddress(req));
+  }
+
+  /**
+   * GET /users/me/notification-preferences
+   * Per-type, per-channel (email/push/inApp) notification preferences.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('me/notification-preferences')
+  async getNotificationPreferences(@Request() req: AuthenticatedRequest) {
+    const userId = req.user.sub || req.user.userId;
+    if (!userId) {
+      throw new UnauthorizedException('User id not found in token');
+    }
+    return this.notificationsService.getPreferences(userId);
+  }
+
+  /**
+   * PUT /users/me/notification-preferences
+   * Merge a partial preference update over the existing preferences.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Put('me/notification-preferences')
+  async updateNotificationPreferences(
+    @Request() req: AuthenticatedRequest,
+    @Body() dto: UpdateNotificationPreferencesDto,
+  ) {
+    const userId = req.user.sub || req.user.userId;
+    if (!userId) {
+      throw new UnauthorizedException('User id not found in token');
+    }
+    return this.notificationsService.updatePreferences(
+      userId,
+      dto.preferences,
+    );
   }
 
   /**
