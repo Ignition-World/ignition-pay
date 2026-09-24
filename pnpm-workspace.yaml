@@ -3,11 +3,12 @@ packages:
   - "ignition-api"
   - "ignition-pay-frontend"
 allowBuilds:
-  '@prisma/client': set this to true or false
-  '@prisma/engines': set this to true or false
-  '@scarf/scarf': set this to true or false
-  esbuild: set this to true or false
-  msgpackr-extract: set this to true or false
-  prisma: set this to true or false
-  sharp: set this to true or false
-  unrs-resolver: set this to true or false
+  '@parcel/watcher': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@scarf/scarf': true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true

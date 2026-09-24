@@ -45,7 +45,7 @@ describe('TransactionsController', () => {
     const mockResponse = {
       data: [],
       nextCursor: null,
-      hasNextPage: false,
+      hasMore: false,
       limit: 10,
     };
     service.getTransactions.mockResolvedValue(mockResponse as any);
@@ -58,7 +58,7 @@ describe('TransactionsController', () => {
 
   it('getTransactions() passes cursor and filters to service', async () => {
     const query = {
-      cursor: 'some-id',
+      cursor: 'some-opaque-cursor',
       limit: 5,
       status: 'PENDING',
       type: 'XLM',
@@ -66,12 +66,26 @@ describe('TransactionsController', () => {
     service.getTransactions.mockResolvedValue({
       data: [],
       nextCursor: null,
-      hasNextPage: false,
+      hasMore: false,
       limit: 5,
     } as any);
 
     await controller.getTransactions(query);
 
     expect(service.getTransactions).toHaveBeenCalledWith(query);
+  });
+
+  it('getTransactions() forwards a nextCursor in the response', async () => {
+    const opaqueCursor = Buffer.from('txn-99', 'utf8').toString('base64');
+    service.getTransactions.mockResolvedValue({
+      data: [{ id: 'txn-99' } as any],
+      nextCursor: opaqueCursor,
+      hasMore: true,
+      limit: 1,
+    });
+
+    const result = await controller.getTransactions({ limit: 1 });
+    expect(result.nextCursor).toBe(opaqueCursor);
+    expect(result.hasMore).toBe(true);
   });
 });
