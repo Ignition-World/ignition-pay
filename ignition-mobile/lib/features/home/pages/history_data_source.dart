@@ -7,6 +7,7 @@ class HistoryTransaction {
   final String assetCode;
   final String amount;
   final String status;
+  final String? counterpartyAddress;
   final DateTime createdAt;
 
   const HistoryTransaction({
@@ -15,6 +16,7 @@ class HistoryTransaction {
     required this.amount,
     required this.status,
     required this.createdAt,
+    this.counterpartyAddress,
   });
 
   factory HistoryTransaction.fromJson(Map<String, dynamic> json) {
@@ -23,6 +25,7 @@ class HistoryTransaction {
       assetCode: json['assetCode'] as String,
       amount: json['amount'] as String,
       status: json['status'] as String,
+      counterpartyAddress: json['counterpartyAddress'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }

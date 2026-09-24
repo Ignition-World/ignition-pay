@@ -2,6 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../features/home/pages/home_page.dart';
 import '../core/security/secure_screen_wrapper.dart';
+import '../features/send/payment_review_page.dart';
+
+String deepLinkLocation(Uri uri) {
+  final path = uri.scheme == 'ignitionpay' && uri.host.isNotEmpty
+      ? '/${uri.host}${uri.path}'
+      : uri.path;
+  return Uri(path: path, queryParameters: uri.queryParameters).toString();
+}
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
@@ -41,11 +49,11 @@ final GoRouter appRouter = GoRouter(
         final asset = state.uri.queryParameters['asset'] ?? 'XLM';
         final memo = state.uri.queryParameters['memo'];
         return SecureScreenWrapper(
-          child: Scaffold(
-            body: Center(
-              child: Text('Pay to: $address\nAmount: $amount $asset\nMemo: $memo'),
-            ),
-            // replace with: PayPage(address: address, amount: amount, asset: asset, memo: memo)
+          child: PaymentReviewPage(
+            initialAddress: address,
+            initialAmount: amount,
+            initialAsset: asset,
+            initialMemo: memo,
           ),
         );
       },
