@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/security/secure_screen_wrapper.dart';
+import '../../core/widgets/copyable_address.dart';
 
 import '../../core/haptic_service.dart';
 
@@ -34,7 +35,7 @@ class AddressQrView extends StatelessWidget {
           child: const Center(child: Icon(Icons.qr_code_2, size: 120)),
         ),
         const SizedBox(height: 12),
-        SelectableText(address, textAlign: TextAlign.center),
+        CopyableAddress(address: address, textAlign: TextAlign.center),
         const SizedBox(height: 8),
         OutlinedButton.icon(
           onPressed: () {
