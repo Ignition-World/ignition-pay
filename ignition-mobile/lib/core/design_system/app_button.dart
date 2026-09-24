@@ -29,7 +29,7 @@ class AppButton extends StatelessWidget {
         : icon != null
             ? Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [icon!, const SizedBox(width: 8), Text(label)],
+                children: [icon!, const SizedBox(width: 8), Flexible(child: Text(label, textAlign: TextAlign.center))],
               )
             : Text(label);
 

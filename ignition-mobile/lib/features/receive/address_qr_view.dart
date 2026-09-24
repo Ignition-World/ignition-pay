@@ -29,10 +29,16 @@ class AddressQrView extends StatelessWidget {
           width: 200,
           height: 200,
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Center(child: Icon(Icons.qr_code_2, size: 120)),
+          child: const Center(
+            child: Semantics(
+              image: true,
+              label: 'QR Code for deposit address',
+              child: Icon(Icons.qr_code_2, size: 120),
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         CopyableAddress(address: address, textAlign: TextAlign.center),

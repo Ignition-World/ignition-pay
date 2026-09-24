@@ -10,9 +10,9 @@ abstract final class AppColors {
   static const onSurface = Color(0xFF1A1A2E);
   static const onSurfaceDark = Color(0xFFF5F5FF);
 
-  static const muted = Color(0xFF9E9E9E);
+  static const muted = Color(0xFF616161);
 
-  static const success = Color(0xFF4CAF50);
-  static const error = Color(0xFFE53935);
-  static const warning = Color(0xFFFB8C00);
+  static const success = Color(0xFF2E7D32); // Material green 800
+  static const error = Color(0xFFD32F2F);   // Material red 700
+  static const warning = Color(0xFFF57C00); // Material orange 700
 }
