@@ -36,6 +36,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { Sep24Module } from './sep24/sep24.module';
 import { SettingsModule } from './settings/settings.module';
 import { Sep38Module } from './sep38/sep38.module';
+import { ShutdownModule } from './common/shutdown/shutdown.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { Sep38Module } from './sep38/sep38.module';
     }),
     CryptoModule,
     LoggerModule,
+    ShutdownModule,
     PrismaModule,
     QueueModule,
     RedisModule,
