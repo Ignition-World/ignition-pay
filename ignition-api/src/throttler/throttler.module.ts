@@ -4,6 +4,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerRedisStorage } from './throttler-redis.storage';
 import { ThrottlerBehindProxyGuard } from './throttler-behind-proxy.guard';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ThrottlerBehindProxyGuard } from './throttler-behind-proxy.guard';
         storage: new ThrottlerRedisStorage(config),
       }),
     }),
+    SettingsModule,
   ],
   providers: [
     {

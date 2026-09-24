@@ -201,6 +201,19 @@ export class NotificationsService {
     return result;
   }
 
+  async sendAlert(params: {
+    title: string;
+    message: string;
+    level?: 'info' | 'warning' | 'critical';
+    metadata?: Record<string, unknown>;
+  }): Promise<{ ok: true }> {
+    const level = params.level ?? 'info';
+    this.logger.log(
+      `[alert:${level}] ${params.title} :: ${params.message}${params.metadata ? ` :: ${JSON.stringify(params.metadata)}` : ''}`,
+    );
+    return { ok: true };
+  }
+
   /** Return all unread notifications for a user, newest first. */
   async findUnread(userId: string) {
     return this.prisma.notification.findMany({

@@ -217,6 +217,18 @@ model SystemSettings {
   sessionIdleTimeoutSeconds Int @default(1800)
   /// Whether to enable session persistence (extend session on activity)
   sessionPersistenceEnabled Boolean @default(true)
+  /// Maximum address-generation requests per IP in the configured throttle window.
+  addressGenerationThrottleLimit Int @default(5)
+  /// Address-generation throttle TTL in seconds.
+  addressGenerationThrottleTtlSeconds Int @default(60)
+  /// Alert threshold for per-IP address-generation throttle consumption (percent of limit).
+  addressGenerationThrottleAlertThresholdPercent Int @default(80)
+  /// Minimum sustained breach duration before a sustained-breach alert is emitted.
+  addressGenerationThrottleSustainedBreachMinutes Int @default(5)
+  /// Minimum unique IPs throttled within 1 minute before a rate-alert is emitted.
+  addressGenerationThrottleUniqueIpsThreshold Int @default(50)
+  /// Cooldown period in minutes between repeated throttle alerts.
+  addressGenerationThrottleAlertCooldownMinutes Int @default(10)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

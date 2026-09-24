@@ -7,8 +7,8 @@
 export const ADDRESS_GENERATION_THROTTLE = {
   /** Maximum number of address generation requests per window. */
   limit: 5,
-  /** Time window in seconds. */
-  ttl: 60,
+  /** Time window in milliseconds. */
+  ttl: 60_000,
 } as const;
 
 export const ADDRESS_GENERATION_THROTTLE_MESSAGE =

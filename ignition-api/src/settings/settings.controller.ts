@@ -14,6 +14,7 @@ import {
 } from '@nestjs/swagger';
 import { SessionGuard } from '../session/session.guard';
 import { AdminGuard } from '../users/guards/admin.guard';
+import { AddressGenerationThrottleMonitorService } from '../throttler/address-generation-throttle-monitor.service';
 import { SettingsService, SystemSettingsDto } from './settings.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 
@@ -22,7 +23,10 @@ import { UpdateSettingsDto } from './dto/update-settings.dto';
 @UseGuards(SessionGuard, AdminGuard)
 @ApiBearerAuth('JWT-auth')
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    private readonly settingsService: SettingsService,
+    private readonly addressGenerationThrottleMonitorService: AddressGenerationThrottleMonitorService,
+  ) {}
 
   /**
    * GET /admin/settings
@@ -48,5 +52,12 @@ export class SettingsController {
     @Body() updateSettingsDto: UpdateSettingsDto,
   ): Promise<SystemSettingsDto> {
     return this.settingsService.updateSettings(updateSettingsDto);
+  }
+
+  @Get('throttle-dashboard')
+  @ApiOperation({ summary: 'Get current address-generation throttle statistics (admin only)' })
+  @ApiResponse({ status: 200, description: 'Throttle statistics retrieved successfully' })
+  async getThrottleDashboard() {
+    return this.addressGenerationThrottleMonitorService.getCurrentStats();
   }
 }

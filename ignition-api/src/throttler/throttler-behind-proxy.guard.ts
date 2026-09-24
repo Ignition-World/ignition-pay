@@ -1,11 +1,15 @@
-import { ThrottlerGuard } from '@nestjs/throttler';
-import { Injectable } from '@nestjs/common';
-
-
-
+import { ExecutionContext, Injectable } from '@nestjs/common';
+import { ThrottlerException, ThrottlerGuard } from '@nestjs/throttler';
+import { AddressGenerationThrottleMonitorService } from './address-generation-throttle-monitor.service';
 
 @Injectable()
 export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
+  constructor(
+    private readonly addressGenerationThrottleMonitorService: AddressGenerationThrottleMonitorService,
+  ) {
+    super();
+  }
+
   protected async getTracker(req: Record<string, any>): Promise<string> {
     const rawIp =
       req.headers['cf-connecting-ip'] ||
@@ -19,5 +23,40 @@ export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
       return parts[0];
     }
     return req.ip || '127.0.0.1';
+  }
+
+  async handleRequest(
+    context: ExecutionContext,
+    limit: number,
+    ttl: number,
+    throttlerName: string,
+  ): Promise<boolean> {
+    const req = context.switchToHttp().getRequest();
+    const tracker = await this.getTracker(req);
+    const key = `${throttlerName}:${tracker}`;
+    const { totalHits, isBlocked } = await this.storage.increment(
+      key,
+      ttl,
+      limit,
+      0,
+      throttlerName,
+    );
+
+    if (req.originalUrl?.includes('/addresses/generate')) {
+      await this.addressGenerationThrottleMonitorService.recordEvent({
+        ip: tracker,
+        endpoint: req.originalUrl,
+        count: totalHits,
+        limit,
+        isBlocked,
+        occurredAt: new Date(),
+      });
+    }
+
+    if (isBlocked) {
+      throw new ThrottlerException('Too Many Requests');
+    }
+
+    return true;
   }
 }
