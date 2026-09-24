@@ -31,6 +31,34 @@ export class ConfigValidationService implements OnModuleInit {
   onModuleInit() {
     this.validateAdminWallets();
     this.validateStellarHomeDomain();
+    this.validateSecret('JWT_SECRET');
+    this.validateSecret('REFRESH_TOKEN_SECRET');
+  }
+
+  /**
+   * Issue #608 — JWT_SECRET/REFRESH_TOKEN_SECRET previously fell back to
+   * hardcoded defaults (`'default-secret'`, `'default-refresh-secret'`,
+   * `'stellaraid-default-secret'`) wherever they were read, so a missing
+   * env var silently signed tokens with a publicly known key instead of
+   * failing. Require both to be set and long enough here, once, so every
+   * call site can read them without a fallback.
+   */
+  private validateSecret(envVar: 'JWT_SECRET' | 'REFRESH_TOKEN_SECRET') {
+    const value = this.configService.get<string>(envVar, '');
+
+    if (!value.trim()) {
+      throw new Error(
+        `${envVar} is not configured. Set it to a random string of at ` +
+          `least 64 characters — the server refuses to start with a ` +
+          `default/missing secret.`,
+      );
+    }
+
+    if (value.length < 64) {
+      throw new Error(
+        `${envVar} must be at least 64 characters (got ${value.length}).`,
+      );
+    }
   }
 
   private validateAdminWallets() {

@@ -138,7 +138,7 @@ export class AuthTokenService {
     };
 
     const accessToken = this.jwt.sign(accessPayload, {
-      secret: this.config.get<string>('JWT_SECRET', 'default-secret'),
+      secret: this.config.getOrThrow<string>('JWT_SECRET'),
       expiresIn: `${accessTtlSeconds}s`,
     });
 
@@ -149,10 +149,7 @@ export class AuthTokenService {
     };
 
     const refreshToken = this.jwt.sign(refreshPayload, {
-      secret: this.config.get<string>(
-        'REFRESH_TOKEN_SECRET',
-        'default-refresh-secret',
-      ),
+      secret: this.config.getOrThrow<string>('REFRESH_TOKEN_SECRET'),
       expiresIn: `${refreshTtlSeconds}s`,
     });
 
@@ -199,10 +196,7 @@ export class AuthTokenService {
 
     try {
       payload = this.jwt.verify(refreshToken, {
-        secret: this.config.get<string>(
-          'REFRESH_TOKEN_SECRET',
-          'default-refresh-secret',
-        ),
+        secret: this.config.getOrThrow<string>('REFRESH_TOKEN_SECRET'),
       });
     } catch (err: unknown) {
       if (
@@ -304,7 +298,7 @@ export class AuthTokenService {
     };
 
     const accessToken = this.jwt.sign(rotationPayload, {
-      secret: this.config.get<string>('JWT_SECRET', 'default-secret'),
+      secret: this.config.getOrThrow<string>('JWT_SECRET'),
       expiresIn: `${accessTtlSeconds}s`,
     });
 
@@ -317,10 +311,7 @@ export class AuthTokenService {
     };
 
     const newRefreshToken = this.jwt.sign(newRefreshPayload, {
-      secret: this.config.get<string>(
-        'REFRESH_TOKEN_SECRET',
-        'default-refresh-secret',
-      ),
+      secret: this.config.getOrThrow<string>('REFRESH_TOKEN_SECRET'),
       expiresIn: `${refreshTtlSeconds}s`,
     });
 

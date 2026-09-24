@@ -6,8 +6,69 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { initSentry } from './common/sentry/sentry.middleware';
 import { ValidationExceptionFilter } from './common/validation-exception.filter';
 import { ApiKeyExpirationService } from './api-keys/api-key-expiration.service';
+import { ShutdownState } from './common/shutdown/shutdown.state';
+import { getQueueToken } from '@nestjs/bull';
+import type { Queue } from 'bull';
+import {
+  QUEUE_EMAIL,
+  QUEUE_CONTRACT_EVENTS,
+  QUEUE_ANALYTICS,
+  QUEUE_PAYMENTS,
+  QUEUE_HORIZON,
+} from './queue/queue.constants';
 import type { Request, Response } from 'express';
 import * as express from 'express';
+import type { INestApplication, LoggerService } from '@nestjs/common';
+
+const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 30_000;
+const QUEUE_NAMES = [
+  QUEUE_EMAIL,
+  QUEUE_CONTRACT_EVENTS,
+  QUEUE_ANALYTICS,
+  QUEUE_PAYMENTS,
+  QUEUE_HORIZON,
+];
+
+function registerGracefulShutdown(
+  app: INestApplication,
+  logger: LoggerService,
+): void {
+  const shutdownState = app.get(ShutdownState);
+
+  const shutdown = async (signal: string) => {
+    logger.log(`Received ${signal}, starting graceful shutdown`);
+    shutdownState.markShuttingDown();
+
+    const forceExitTimer = setTimeout(() => {
+      logger.error('Graceful shutdown timed out, forcing exit');
+      process.exit(1);
+    }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+    forceExitTimer.unref();
+
+    try {
+      for (const name of QUEUE_NAMES) {
+        const queue = app.get<Queue>(getQueueToken(name), { strict: false });
+        await queue?.pause();
+      }
+
+      // app.close() stops the HTTP server from accepting new connections,
+      // waits for in-flight requests to finish, then runs onModuleDestroy
+      // hooks (Prisma disconnect, etc.) across the module tree.
+      await app.close();
+
+      clearTimeout(forceExitTimer);
+      logger.log('Graceful shutdown complete');
+      process.exit(0);
+    } catch (err) {
+      clearTimeout(forceExitTimer);
+      logger.error('Error during graceful shutdown', err as Error);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+}
 
 async function bootstrap() {
   initSentry(process.env.SENTRY_DSN ?? '');
@@ -27,7 +88,10 @@ async function bootstrap() {
   );
   app.use(express.urlencoded({ extended: true }));
 
-  app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
+  const logger = app.get(WINSTON_MODULE_NEST_PROVIDER);
+  app.useLogger(logger);
+  app.enableShutdownHooks();
+  registerGracefulShutdown(app, logger);
 
   app.useGlobalPipes(
     new ValidationPipe({

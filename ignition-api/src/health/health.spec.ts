@@ -38,7 +38,17 @@ describe('Health Module', () => {
         { provide: HealthCheckService, useValue: mockHealth },
         { provide: HttpHealthIndicator, useValue: mockHttp },
         { provide: PrismaHealthIndicator, useValue: mockPrismaHealth },
-        { provide: PrismaService, useValue: {} },
+        { provide: PrismaService, useValue: {
+          getPoolStatus: () => ({
+            poolSize: 10,
+            poolTimeoutMs: 10000,
+            queueTimeoutMs: 10000,
+            active: 0,
+            queued: 0,
+            available: 10,
+            exhausted: false,
+          }),
+        } },
         {
           provide: ConfigService,
           useValue: {
@@ -96,6 +106,15 @@ describe('Health Module', () => {
       const res = await controller.ready();
       expect(checkSpy).toHaveBeenCalled();
       expect(res).toEqual({ status: 'ok' });
+    });
+
+    it('pool() should return database connection pool status', () => {
+      const res = controller.pool();
+      expect(res).toMatchObject({
+        poolSize: 10,
+        active: 0,
+        exhausted: false,
+      });
     });
   });
 });
