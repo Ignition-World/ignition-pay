@@ -76,11 +76,14 @@ export class PrismaService
   readonly poolTimeoutMs: number;
   readonly queueTimeoutMs: number;
 
+  private readonly config?: ConfigService;
+  private readonly queryMetrics?: QueryMetricsService;
+
   private active = 0;
   private queued = 0;
   private readonly waitQueue: Waiter[] = [];
 
-  constructor() {
+  constructor(config?: ConfigService, queryMetrics?: QueryMetricsService) {
     const poolSize = clampPoolSize(process.env.PRISMA_POOL_SIZE);
     const poolTimeoutMs = parsePositiveInt(
       process.env.PRISMA_POOL_TIMEOUT_MS,
@@ -105,13 +108,8 @@ export class PrismaService
     this.poolSize = poolSize;
     this.poolTimeoutMs = poolTimeoutMs;
     this.queueTimeoutMs = queueTimeoutMs;
-  }
-
-  constructor(
-    private readonly config: ConfigService,
-    private readonly queryMetrics: QueryMetricsService,
-  ) {
-    super();
+    this.config = config;
+    this.queryMetrics = queryMetrics;
   }
 
   async onModuleInit(): Promise<void> {
@@ -120,6 +118,10 @@ export class PrismaService
       `Prisma connected (pool_size=${this.poolSize}, pool_timeout_ms=${this.poolTimeoutMs}, queue_timeout_ms=${this.queueTimeoutMs})`,
     );
     this.logger.log('Prisma connected to PostgreSQL');
+
+    if (!this.config || !this.queryMetrics) {
+      return;
+    }
 
     const slowQueryThresholdMs = this.config.get<number>(
       'SLOW_QUERY_THRESHOLD_MS',

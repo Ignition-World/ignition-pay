@@ -35,4 +35,58 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsBoolean()
   sessionPersistenceEnabled?: boolean;
+
+  /**
+   * Max address generation requests per IP within the throttle TTL.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  addressGenerationThrottleLimit?: number;
+
+  /**
+   * Address-generation throttle window in seconds.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(3600)
+  addressGenerationThrottleTtlSeconds?: number;
+
+  /**
+   * Percent of the limit that triggers a warning alert.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  addressGenerationThrottleAlertThresholdPercent?: number;
+
+  /**
+   * Consecutive breached-window length in minutes before a sustained breach alert fires.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  addressGenerationThrottleSustainedBreachMinutes?: number;
+
+  /**
+   * Unique IPs that must hit the throttle within one minute before a traffic alert fires.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  addressGenerationThrottleUniqueIpsThreshold?: number;
+
+  /**
+   * Cooldown period for repeated alerts, in minutes.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1440)
+  addressGenerationThrottleAlertCooldownMinutes?: number;
 }

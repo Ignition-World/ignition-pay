@@ -7,6 +7,12 @@ export interface SystemSettingsDto {
   sessionTtlSeconds: number;
   sessionIdleTimeoutSeconds: number;
   sessionPersistenceEnabled: boolean;
+  addressGenerationThrottleLimit: number;
+  addressGenerationThrottleTtlSeconds: number;
+  addressGenerationThrottleAlertThresholdPercent: number;
+  addressGenerationThrottleSustainedBreachMinutes: number;
+  addressGenerationThrottleUniqueIpsThreshold: number;
+  addressGenerationThrottleAlertCooldownMinutes: number;
 }
 
 @Injectable()
@@ -34,6 +40,12 @@ export class SettingsService {
           sessionTtlSeconds: this.configService.get<number>('SESSION_TTL_SECONDS', 604800),
           sessionIdleTimeoutSeconds: this.configService.get<number>('SESSION_IDLE_TIMEOUT_SECONDS', 1800),
           sessionPersistenceEnabled: true,
+          addressGenerationThrottleLimit: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_LIMIT', 5),
+          addressGenerationThrottleTtlSeconds: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_TTL_SECONDS', 60),
+          addressGenerationThrottleAlertThresholdPercent: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_ALERT_THRESHOLD_PERCENT', 80),
+          addressGenerationThrottleSustainedBreachMinutes: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_SUSTAINED_BREACH_MINUTES', 5),
+          addressGenerationThrottleUniqueIpsThreshold: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_UNIQUE_IPS_THRESHOLD', 50),
+          addressGenerationThrottleAlertCooldownMinutes: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_ALERT_COOLDOWN_MINUTES', 10),
         },
       });
       this.logger.log('Default system settings created');
@@ -58,6 +70,12 @@ export class SettingsService {
         sessionTtlSeconds: true,
         sessionIdleTimeoutSeconds: true,
         sessionPersistenceEnabled: true,
+        addressGenerationThrottleLimit: true,
+        addressGenerationThrottleTtlSeconds: true,
+        addressGenerationThrottleAlertThresholdPercent: true,
+        addressGenerationThrottleSustainedBreachMinutes: true,
+        addressGenerationThrottleUniqueIpsThreshold: true,
+        addressGenerationThrottleAlertCooldownMinutes: true,
       },
     });
 
@@ -68,6 +86,12 @@ export class SettingsService {
         sessionTtlSeconds: this.configService.get<number>('SESSION_TTL_SECONDS', 604800),
         sessionIdleTimeoutSeconds: this.configService.get<number>('SESSION_IDLE_TIMEOUT_SECONDS', 1800),
         sessionPersistenceEnabled: true,
+        addressGenerationThrottleLimit: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_LIMIT', 5),
+        addressGenerationThrottleTtlSeconds: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_TTL_SECONDS', 60),
+        addressGenerationThrottleAlertThresholdPercent: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_ALERT_THRESHOLD_PERCENT', 80),
+        addressGenerationThrottleSustainedBreachMinutes: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_SUSTAINED_BREACH_MINUTES', 5),
+        addressGenerationThrottleUniqueIpsThreshold: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_UNIQUE_IPS_THRESHOLD', 50),
+        addressGenerationThrottleAlertCooldownMinutes: this.configService.get<number>('ADDRESS_GENERATION_THROTTLE_ALERT_COOLDOWN_MINUTES', 10),
       };
       this.cachedSettings = defaults;
       this.lastCacheUpdate = now;
@@ -96,6 +120,12 @@ export class SettingsService {
         ...(updates.sessionTtlSeconds !== undefined && { sessionTtlSeconds: updates.sessionTtlSeconds }),
         ...(updates.sessionIdleTimeoutSeconds !== undefined && { sessionIdleTimeoutSeconds: updates.sessionIdleTimeoutSeconds }),
         ...(updates.sessionPersistenceEnabled !== undefined && { sessionPersistenceEnabled: updates.sessionPersistenceEnabled }),
+        ...(updates.addressGenerationThrottleLimit !== undefined && { addressGenerationThrottleLimit: updates.addressGenerationThrottleLimit }),
+        ...(updates.addressGenerationThrottleTtlSeconds !== undefined && { addressGenerationThrottleTtlSeconds: updates.addressGenerationThrottleTtlSeconds }),
+        ...(updates.addressGenerationThrottleAlertThresholdPercent !== undefined && { addressGenerationThrottleAlertThresholdPercent: updates.addressGenerationThrottleAlertThresholdPercent }),
+        ...(updates.addressGenerationThrottleSustainedBreachMinutes !== undefined && { addressGenerationThrottleSustainedBreachMinutes: updates.addressGenerationThrottleSustainedBreachMinutes }),
+        ...(updates.addressGenerationThrottleUniqueIpsThreshold !== undefined && { addressGenerationThrottleUniqueIpsThreshold: updates.addressGenerationThrottleUniqueIpsThreshold }),
+        ...(updates.addressGenerationThrottleAlertCooldownMinutes !== undefined && { addressGenerationThrottleAlertCooldownMinutes: updates.addressGenerationThrottleAlertCooldownMinutes }),
         updatedAt: new Date(),
       },
       select: {
@@ -103,6 +133,12 @@ export class SettingsService {
         sessionTtlSeconds: true,
         sessionIdleTimeoutSeconds: true,
         sessionPersistenceEnabled: true,
+        addressGenerationThrottleLimit: true,
+        addressGenerationThrottleTtlSeconds: true,
+        addressGenerationThrottleAlertThresholdPercent: true,
+        addressGenerationThrottleSustainedBreachMinutes: true,
+        addressGenerationThrottleUniqueIpsThreshold: true,
+        addressGenerationThrottleAlertCooldownMinutes: true,
       },
     });
 

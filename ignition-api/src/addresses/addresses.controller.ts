@@ -29,6 +29,8 @@ import { VerifyAddressResponseDto } from './dto/verify-address-response.dto';
 import { GenerateMemoDto } from './dto/generate-memo.dto';
 import { ValidateMemoDto } from './dto/validate-memo.dto';
 import { ResolveDepositDto } from './dto/resolve-deposit.dto';
+import { Throttle } from '@nestjs/throttler';
+import { ADDRESS_GENERATION_THROTTLE } from './address-generation.throttle';
 
 @ApiTags('addresses')
 @ApiBearerAuth()
@@ -137,6 +139,12 @@ export class AddressesController {
   }
 
   @Post('generate')
+  @Throttle({
+    default: {
+      limit: ADDRESS_GENERATION_THROTTLE.limit,
+      ttl: ADDRESS_GENERATION_THROTTLE.ttl,
+    },
+  })
   @UseGuards(ApiKeyGuard, ApiKeyScopeGuard)
   @RequireScope('write')
   @ApiOperation({ summary: 'Generate a new deposit address for a wallet' })
