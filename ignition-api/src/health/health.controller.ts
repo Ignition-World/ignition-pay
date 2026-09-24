@@ -31,6 +31,7 @@ export class HealthController {
       () => this.prismaHealth.pingCheck('database', this.prisma),
       () => this.redisHealth.isHealthy('redis'),
       () => this.http.pingCheck('stellar_horizon', horizonUrl),
+      () => this.poolIndicator(),
     ]);
   }
 
@@ -39,5 +40,21 @@ export class HealthController {
   @HealthCheck()
   ready() {
     return this.check();
+  }
+
+  /** Dedicated pool status for operators / load dashboards. */
+  @Get('pool')
+  pool() {
+    return this.prisma.getPoolStatus();
+  }
+
+  private poolIndicator() {
+    const status = this.prisma.getPoolStatus();
+    return Promise.resolve({
+      database_pool: {
+        status: status.exhausted ? 'degraded' : 'up',
+        ...status,
+      },
+    });
   }
 }

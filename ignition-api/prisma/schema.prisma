@@ -1,3 +1,5 @@
+// Pool sizing (Issue #593): PrismaService appends connection_limit (PRISMA_POOL_SIZE,
+// clamped 5–20) and pool_timeout (from PRISMA_POOL_TIMEOUT_MS) to DATABASE_URL at runtime.
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
