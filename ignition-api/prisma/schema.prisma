@@ -606,3 +606,34 @@ model DepositAddress {
   @@index([network])
   @@map("deposit_addresses")
 }
+enum WebhookAlgorithm {
+  RSA_SHA256
+  ECDSA_SHA256
+  HMAC_SHA256
+}
+
+/// AnchorConfig stores per-anchor SEP-24 webhook verification credentials.
+/// webhookSecret    – HMAC shared secret (hex or base64 encoded).
+/// webhookPublicKey – PEM-encoded RSA or ECDSA public key for asymmetric algos.
+/// algorithm        – Which signature scheme the anchor uses.
+model AnchorConfig {
+  id               String           @id @default(uuid())
+  /// Unique slug identifying the anchor (e.g. "circle", "moneygram")
+  anchorId         String           @unique
+  /// Human-readable name for display
+  name             String
+  /// Base URL of the anchor (e.g. "https://api.myanchor.com")
+  baseUrl          String
+  algorithm        WebhookAlgorithm @default(HMAC_SHA256)
+  /// HMAC_SHA256: hex- or base64-encoded shared secret
+  webhookSecret    String?
+  /// RSA_SHA256 / ECDSA_SHA256: PEM-encoded public key
+  webhookPublicKey String?
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([anchorId])
+  @@index([isActive])
+  @@map("anchor_configs")
+}

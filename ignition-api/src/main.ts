@@ -6,11 +6,26 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { initSentry } from './common/sentry/sentry.middleware';
 import { ValidationExceptionFilter } from './common/validation-exception.filter';
 import { ApiKeyExpirationService } from './api-keys/api-key-expiration.service';
+import type { Request, Response } from 'express';
+import * as express from 'express';
 
 async function bootstrap() {
   initSentry(process.env.SENTRY_DSN ?? '');
 
-  const app = await NestFactory.create(AppModule);
+  // rawBody: true enables NestJS raw body access required by Sep24WebhookGuard
+  // for signature verification over the original request bytes.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+
+  // Attach raw buffer to req.rawBody so the Sep24WebhookGuard can verify
+  // Webhook-Signature against the unmodified body bytes.
+  app.use(
+    express.json({
+      verify: (req: Request & { rawBody?: Buffer }, _res: Response, buf: Buffer) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+  app.use(express.urlencoded({ extended: true }));
 
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
 

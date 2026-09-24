@@ -6,6 +6,8 @@ import { JwtAuthGuard } from '../users/guards/jwt-auth.guard'
 import { Sep24Controller } from './sep24.controller'
 import { Sep24CallbackController } from './sep24-callback.controller'
 import { Sep24Service } from './sep24.service'
+import { Sep24WebhookVerificationService } from './sep24-webhook-verification.service'
+import { Sep24WebhookGuard } from './sep24-webhook.guard'
 
 @Module({
   imports: [
@@ -21,6 +23,12 @@ import { Sep24Service } from './sep24.service'
     }),
   ],
   controllers: [Sep24Controller, Sep24CallbackController],
-  providers: [Sep24Service, JwtAuthGuard],
+  providers: [
+    Sep24Service,
+    JwtAuthGuard,
+    Sep24WebhookVerificationService,
+    Sep24WebhookGuard,
+  ],
+  exports: [Sep24WebhookVerificationService],
 })
 export class Sep24Module {}
