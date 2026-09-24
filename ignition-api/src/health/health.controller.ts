@@ -39,6 +39,7 @@ export class HealthController {
       () => this.prismaHealth.pingCheck('database', this.prisma),
       () => this.redisHealth.isHealthy('redis'),
       () => this.http.pingCheck('stellar_horizon', horizonUrl),
+      () => this.poolIndicator(),
     ]);
   }
 
@@ -49,6 +50,20 @@ export class HealthController {
     return this.check();
   }
 
+  /** Dedicated pool status for operators / load dashboards. */
+  @Get('pool')
+  pool() {
+    return this.prisma.getPoolStatus();
+  }
+
+  private poolIndicator() {
+    const status = this.prisma.getPoolStatus();
+    return Promise.resolve({
+      database_pool: {
+        status: status.exhausted ? 'degraded' : 'up',
+        ...status,
+      },
+    });
   /** p50/p95/p99 latency per Prisma model.action, tracked in-memory. */
   @Get('query-metrics')
   queryMetricsSnapshot() {
