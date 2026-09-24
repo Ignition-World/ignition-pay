@@ -10,27 +10,30 @@ import {
 } from 'class-validator';
 
 /**
- * Query DTO for GET /transactions (Issue #246).
+ * Query DTO for GET /transactions (Issue #586).
  *
- * Uses cursor-based pagination — `cursor` is the `id` of the last item
- * returned on the previous page. Omit to fetch the first page.
- * Offset-based `page` / `skip` fields have been removed.
+ * Uses cursor-based pagination — `cursor` is an opaque token returned in
+ * `nextCursor` from the previous response.  Omit to fetch the first page.
+ * Offset-based `page` / `skip` fields are not supported.
  */
 export class GetTransactionsQueryDto {
   /**
-   * Opaque cursor: the `id` of the last transaction returned on the
-   * previous page. Omit (or pass empty) to fetch the first page.
+   * Opaque pagination cursor returned by the previous response as `nextCursor`.
+   * Omit (or leave empty) to fetch the first page.
    */
   @IsOptional()
   @IsString()
   cursor?: string;
 
+  /**
+   * Number of records to return per page.  Defaults to 20, maximum 100.
+   */
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
   @Max(100)
-  limit: number = 10;
+  limit: number = 20;
 
   @IsOptional()
   @IsDateString()
@@ -51,14 +54,14 @@ export class GetTransactionsQueryDto {
 
   /**
    * Filter by asset code, e.g. "XLM", "USDC".
-   * Case-insensitive exact match against the donation's assetCode.
+   * Case-insensitive exact match against the transaction's assetCode.
    */
   @IsOptional()
   @IsString()
   asset?: string;
 
   /**
-   * Free-text search over counterparty wallet address (donorId) and tx hash.
+   * Free-text search over counterparty wallet address and tx hash.
    * Partial, case-insensitive match.
    */
   @IsOptional()
@@ -81,11 +84,14 @@ export class TransactionDto {
 
 export class GetTransactionsResponseDto {
   data: TransactionDto[];
-  /** Cursor to pass as `cursor` on the next request. Null when no more pages. */
+  /**
+   * Opaque cursor to pass as `cursor` on the next request.
+   * Null when there are no more pages.
+   */
   nextCursor: string | null;
-  hasNextPage: boolean;
-  total: number;
-  page: number;
+  /** True when another page of results exists after this one. */
+  hasMore: boolean;
+  /** The page size used for this response. */
   limit: number;
 }
 
