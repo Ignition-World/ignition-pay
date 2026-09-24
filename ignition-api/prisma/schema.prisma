@@ -421,10 +421,14 @@ model AuditLog {
   // Relations
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  // Single-column indexes for basic filters
   @@index([userId])
   @@index([action])
   @@index([resourceType])
   @@index([createdAt])
+  // Compound indexes for common audit log query patterns
+  @@index([userId, action, createdAt(sort: Desc)])
+  @@index([resourceType, resourceId])
   @@map("audit_logs")
 }
 
