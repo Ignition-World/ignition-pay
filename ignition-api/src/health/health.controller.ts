@@ -7,6 +7,7 @@ import {
 } from '@nestjs/terminus';
 import { RedisHealthIndicator } from './redis.health';
 import { PrismaService } from '../prisma/prisma.service';
+import { QueryMetricsService } from '../prisma/query-metrics.service';
 import { ConfigService } from '@nestjs/config';
 import { ShutdownState } from '../common/shutdown/shutdown.state';
 
@@ -19,6 +20,7 @@ export class HealthController {
     private readonly prisma: PrismaService,
     private readonly redisHealth: RedisHealthIndicator,
     private readonly config: ConfigService,
+    private readonly queryMetrics: QueryMetricsService,
     private readonly shutdownState: ShutdownState,
   ) {}
 
@@ -45,5 +47,11 @@ export class HealthController {
   @HealthCheck()
   ready() {
     return this.check();
+  }
+
+  /** p50/p95/p99 latency per Prisma model.action, tracked in-memory. */
+  @Get('query-metrics')
+  queryMetricsSnapshot() {
+    return this.queryMetrics.getPercentiles();
   }
 }

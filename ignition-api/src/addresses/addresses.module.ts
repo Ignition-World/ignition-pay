@@ -19,7 +19,7 @@ import { AddressesService } from './addresses.service';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'stellaraid-default-secret'),
+        secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: { expiresIn: '15m' },
       }),
     }),
