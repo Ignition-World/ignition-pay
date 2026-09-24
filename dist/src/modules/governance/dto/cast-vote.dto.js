@@ -6,24 +6,21 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UpdateUserDto = void 0;
+exports.CastVoteDto = void 0;
 const class_validator_1 = require("class-validator");
-class UpdateUserDto {
+const vote_entity_1 = require("../entities/vote.entity");
+class CastVoteDto {
 }
-exports.UpdateUserDto = UpdateUserDto;
+exports.CastVoteDto = CastVoteDto;
+__decorate([
+    (0, class_validator_1.IsUUID)(),
+    (0, class_validator_1.IsNotEmpty)()
+], CastVoteDto.prototype, "voterId", void 0);
+__decorate([
+    (0, class_validator_1.IsEnum)(vote_entity_1.VoteChoice)
+], CastVoteDto.prototype, "choice", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.Length)(2, 50, { message: 'Display name must be between 2 and 50 characters' })
-], UpdateUserDto.prototype, "displayName", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsPhoneNumber)(undefined, {
-        message: 'Phone number must be a valid E.164 formatted number (e.g., +1234567890)',
-    })
-], UpdateUserDto.prototype, "phone", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsUrl)({}, { message: 'Avatar must be a valid URL string' })
-], UpdateUserDto.prototype, "avatar", void 0);
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(1)
+], CastVoteDto.prototype, "weight", void 0);

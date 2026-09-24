@@ -6,27 +6,31 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.User = void 0;
+exports.Wallet = void 0;
 const typeorm_1 = require("typeorm");
-let User = class User {
+let Wallet = class Wallet {
 };
-exports.User = User;
+exports.Wallet = Wallet;
 __decorate([
     (0, typeorm_1.PrimaryGeneratedColumn)('uuid')
-], User.prototype, "id", void 0);
-__decorate([
-    (0, typeorm_1.Column)({ type: 'varchar', unique: true })
-], User.prototype, "email", void 0);
+], Wallet.prototype, "id", void 0);
 __decorate([
     (0, typeorm_1.Index)(),
-    (0, typeorm_1.DeleteDateColumn)({ type: 'timestamp', nullable: true })
-], User.prototype, "deletedAt", void 0);
+    (0, typeorm_1.Column)({ type: 'uuid' })
+], Wallet.prototype, "userId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 10, default: 'XLM' })
+], Wallet.prototype, "assetCode", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'bigint', default: 0 })
+], Wallet.prototype, "balance", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)({ type: 'timestamp' })
-], User.prototype, "createdAt", void 0);
+], Wallet.prototype, "createdAt", void 0);
 __decorate([
     (0, typeorm_1.UpdateDateColumn)({ type: 'timestamp' })
-], User.prototype, "updatedAt", void 0);
-exports.User = User = __decorate([
-    (0, typeorm_1.Entity)('users')
-], User);
+], Wallet.prototype, "updatedAt", void 0);
+exports.Wallet = Wallet = __decorate([
+    (0, typeorm_1.Entity)('wallets'),
+    (0, typeorm_1.Index)('wallet_user_asset_unique', ['userId', 'assetCode'], { unique: true })
+], Wallet);

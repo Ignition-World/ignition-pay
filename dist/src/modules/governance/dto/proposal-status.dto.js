@@ -6,24 +6,29 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UpdateUserDto = void 0;
+exports.ProposalResultsDto = void 0;
 const class_validator_1 = require("class-validator");
-class UpdateUserDto {
+/**
+ * Read-only view of a proposal's current tally, participation and
+ * quorum status.
+ */
+class ProposalResultsDto {
 }
-exports.UpdateUserDto = UpdateUserDto;
+exports.ProposalResultsDto = ProposalResultsDto;
+__decorate([
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0)
+], ProposalResultsDto.prototype, "totalVotes", void 0);
+__decorate([
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_validator_1.Max)(100)
+], ProposalResultsDto.prototype, "participationPercent", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)()
+], ProposalResultsDto.prototype, "quorumMet", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.Length)(2, 50, { message: 'Display name must be between 2 and 50 characters' })
-], UpdateUserDto.prototype, "displayName", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsPhoneNumber)(undefined, {
-        message: 'Phone number must be a valid E.164 formatted number (e.g., +1234567890)',
-    })
-], UpdateUserDto.prototype, "phone", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsUrl)({}, { message: 'Avatar must be a valid URL string' })
-], UpdateUserDto.prototype, "avatar", void 0);
+    (0, class_validator_1.IsInt)(),
+    (0, class_validator_1.Min)(0)
+], ProposalResultsDto.prototype, "requiredVotes", void 0);

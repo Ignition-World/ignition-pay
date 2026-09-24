@@ -6,22 +6,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AuthModule = void 0;
+exports.WalletsModule = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
-const schedule_1 = require("@nestjs/schedule");
-const email_verification_token_entity_1 = require("./entities/email-verification-token.entity");
-const email_verification_cleanup_service_1 = require("./tasks/email-verification-cleanup.service");
-let AuthModule = class AuthModule {
+const wallet_entity_1 = require("./entities/wallet.entity");
+const wallets_service_1 = require("./wallets.service");
+let WalletsModule = class WalletsModule {
 };
-exports.AuthModule = AuthModule;
-exports.AuthModule = AuthModule = __decorate([
+exports.WalletsModule = WalletsModule;
+exports.WalletsModule = WalletsModule = __decorate([
     (0, common_1.Module)({
-        imports: [
-            schedule_1.ScheduleModule.forRoot(),
-            typeorm_1.TypeOrmModule.forFeature([email_verification_token_entity_1.EmailVerificationToken]),
-        ],
-        providers: [email_verification_cleanup_service_1.EmailVerificationCleanupService],
-        exports: [email_verification_cleanup_service_1.EmailVerificationCleanupService],
+        imports: [typeorm_1.TypeOrmModule.forFeature([wallet_entity_1.Wallet])],
+        providers: [wallets_service_1.WalletsService],
+        exports: [wallets_service_1.WalletsService],
     })
-], AuthModule);
+], WalletsModule);
