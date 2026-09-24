@@ -70,7 +70,7 @@ final GoRouter appRouter = GoRouter(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.link_off, size: 64, color: Colors.grey),
+          const Icon(Icons.link_off, size: 64, color: Color(0xFF616161)),
           const SizedBox(height: 16),
           Text('No route for: ${state.uri}'),
           const SizedBox(height: 16),

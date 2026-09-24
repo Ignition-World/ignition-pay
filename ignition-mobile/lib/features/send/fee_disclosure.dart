@@ -17,12 +17,16 @@ class FeeDisclosure extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text('Network fee', style: Theme.of(context).textTheme.bodyMedium),
-        Text(
-          '$feeAmount $assetCode',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+        Flexible(child: Text('Network fee', style: Theme.of(context).textTheme.bodyMedium)),
+        const SizedBox(width: 16),
+        Flexible(
+          child: Text(
+            '$feeAmount $assetCode',
+            textAlign: TextAlign.end,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
         ),
       ],
     );

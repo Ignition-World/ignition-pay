@@ -37,10 +37,10 @@ class SendConfirmationSheet extends StatelessWidget {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Review payment', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 16),
-          _row('Recipient', recipient),
-          _row('Amount', '$amount $asset'),
-          _row('Network fee', fee),
-          if (hasMemo) _row('Memo', memo!),
+          _row(context, 'Recipient', recipient),
+          _row(context, 'Amount', '$amount $asset'),
+          _row(context, 'Network fee', fee),
+          if (hasMemo) _row(context, 'Memo', memo!),
           const SizedBox(height: 24),
           SizedBox(
               width: double.infinity,
@@ -57,10 +57,14 @@ class SendConfirmationSheet extends StatelessWidget {
     );
   }
 
-  Widget _row(String label, String value) => Padding(
+  Widget _row(BuildContext context, String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: const TextStyle(color: Colors.grey)),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          Flexible(child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
+          const SizedBox(width: 16),
           Flexible(child: Text(value, textAlign: TextAlign.end)),
         ]),
       );

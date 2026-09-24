@@ -10,6 +10,7 @@ class AppNetworkImage extends StatelessWidget {
     this.height,
     this.borderRadius = 8,
     this.fit = BoxFit.cover,
+    this.semanticLabel,
   });
 
   final String url;
@@ -17,12 +18,16 @@ class AppNetworkImage extends StatelessWidget {
   final double? height;
   final double borderRadius;
   final BoxFit fit;
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: CachedNetworkImage(
+    return Semantics(
+      label: semanticLabel ?? 'Image',
+      image: true,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: CachedNetworkImage(
         imageUrl: url,
         width: width,
         height: height,
