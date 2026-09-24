@@ -370,10 +370,7 @@ export class UsersService {
         sid: session.sessionId,
       },
       {
-        secret: this.config.get<string>(
-          'JWT_SECRET',
-          'stellaraid-default-secret',
-        ),
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
         expiresIn: `${accessTtlSeconds}s`,
       },
     );
@@ -386,10 +383,7 @@ export class UsersService {
     const refreshToken = this.jwt.sign(
       { sub: user.id, sid: session.sessionId },
       {
-        secret: this.config.get<string>(
-          'REFRESH_TOKEN_SECRET',
-          'default-refresh-secret',
-        ),
+        secret: this.config.getOrThrow<string>('REFRESH_TOKEN_SECRET'),
         expiresIn: `${sessionTtlSeconds}s`,
       },
     );

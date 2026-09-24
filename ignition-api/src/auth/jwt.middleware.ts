@@ -37,10 +37,7 @@ export class JwtMiddleware implements NestMiddleware {
 
     try {
       const payload = this.jwt.verify(token, {
-        secret: this.config.get<string>(
-          'JWT_SECRET',
-          'stellaraid-default-secret',
-        ),
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
       });
       req.user = payload;
       next();
