@@ -35,6 +35,7 @@ import {
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateKYCStatusDto } from './dto/update-kyc-status.dto';
 import { UserProfileDto, PublicUserProfileDto } from './dto/user-profile.dto';
+import { UserDashboardDto } from './dto/dashboard.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AdminGuard } from './guards/admin.guard';
@@ -174,6 +175,18 @@ export class UsersController {
     @Request() req: AuthenticatedRequest,
   ): Promise<UserProfileDto> {
     return this.usersService.getMyProfile(resolveWalletAddress(req));
+  }
+
+  /**
+   * GET /users/me/dashboard
+   * Aggregated dashboard data for the authenticated user.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('me/dashboard')
+  async getMyDashboard(
+    @Request() req: AuthenticatedRequest,
+  ): Promise<UserDashboardDto> {
+    return this.usersService.getDashboard(resolveWalletAddress(req));
   }
 
   /**
