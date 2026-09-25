@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shimmer/shimmer.dart';
 
+import 'package:ignition_mobile/core/design_system/app_color_tokens.dart';
 import 'package:ignition_mobile/core/design_system/shimmer_loader.dart';
 
 import '../../helpers/test_app.dart';
@@ -48,7 +49,11 @@ void main() {
       await tester.pump();
 
       final shimmer = tester.widget<Shimmer>(find.byType(Shimmer));
-      expect(shimmer.gradient.colors.first, const Color(0xFF2C2C3E));
+      expect(
+        shimmer.gradient.colors.first,
+        appColorTokensFor(Brightness.dark).shimmerBase,
+      );
+      expect(shimmer.gradient.colors.first, isNot(const Color(0xFFE0E0E0)));
     });
   });
 
