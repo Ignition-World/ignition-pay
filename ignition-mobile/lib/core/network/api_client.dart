@@ -1,6 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../config/env_config.dart';
+import 'api_exception.dart';
+
+export 'api_exception.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
@@ -44,6 +47,7 @@ class ApiClient {
         onResponse: (response, handler) {
           // Log responses in debug mode
           if (_envConfig.isDebug) {
+            // ignore: avoid_print
             print('📡 API Response: ${response.statusCode} - ${response.requestOptions.uri}');
           }
           return handler.next(response);
@@ -54,6 +58,7 @@ class ApiClient {
             _handleTokenRefresh(e, handler);
           } else {
             if (_envConfig.isDebug) {
+              // ignore: avoid_print
               print('❌ API Error: ${e.response?.statusCode} - ${e.message}');
             }
             return handler.next(e);
@@ -75,9 +80,9 @@ class ApiClient {
 
   void _handleTokenRefresh(DioException e, ErrorInterceptorHandler handler) async {
     try {
-      // Get refresh token from secure storage (implementation would depend on your auth system)
+      // Get refresh token from secure storage
       final refreshToken = dotenv.env['REFRESH_TOKEN'];
-      
+
       if (refreshToken != null) {
         // Create a new dio instance to avoid infinite loop with existing interceptors
         final refreshDio = Dio(BaseOptions(baseUrl: _envConfig.apiBaseUrl));
@@ -89,7 +94,7 @@ class ApiClient {
           final newAccessToken = response.data['access_token'];
           // Update the original request with new token
           e.requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
-          
+
           // Retry the original request
           final clonedRequest = await dio.request(
             e.requestOptions.path,
@@ -100,37 +105,93 @@ class ApiClient {
             data: e.requestOptions.data,
             queryParameters: e.requestOptions.queryParameters,
           );
-          
+
           return handler.resolve(clonedRequest);
         }
       }
     } catch (refreshError) {
       if (_envConfig.isDebug) {
+        // ignore: avoid_print
         print('🔄 Token refresh failed: $refreshError');
       }
-      // If refresh fails, forward the original error
-      return handler.next(e);
+    }
+
+    // Refresh failed or no refresh token — signal session expiry.
+    // Forward a DioException typed as 401 so callers can catch
+    // [UnauthorizedException] after [apiExceptionFromDio] conversion.
+    return handler.next(e);
+  }
+
+  // ---------------------------------------------------------------------------
+  // HTTP helpers — wrap DioExceptions into typed ApiExceptions
+  // ---------------------------------------------------------------------------
+
+  /// Performs a GET request and maps any [DioException] to a typed
+  /// [ApiException] so callers never receive raw Dio errors.
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      return await dio.get<T>(path, queryParameters: queryParameters);
+    } on DioException catch (e) {
+      throw apiExceptionFromDio(e);
     }
   }
 
-  // Helper methods for common HTTP operations
-  Future<Response<T>> get<T>(String path, {Map<String, dynamic>? queryParameters}) async {
-    return await dio.get<T>(path, queryParameters: queryParameters);
+  /// Performs a POST request and maps any [DioException] to a typed
+  /// [ApiException].
+  Future<Response<T>> post<T>(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      return await dio.post<T>(path, data: data, queryParameters: queryParameters);
+    } on DioException catch (e) {
+      throw apiExceptionFromDio(e);
+    }
   }
 
-  Future<Response<T>> post<T>(String path, {dynamic data, Map<String, dynamic>? queryParameters}) async {
-    return await dio.post<T>(path, data: data, queryParameters: queryParameters);
+  /// Performs a PUT request and maps any [DioException] to a typed
+  /// [ApiException].
+  Future<Response<T>> put<T>(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      return await dio.put<T>(path, data: data, queryParameters: queryParameters);
+    } on DioException catch (e) {
+      throw apiExceptionFromDio(e);
+    }
   }
 
-  Future<Response<T>> put<T>(String path, {dynamic data, Map<String, dynamic>? queryParameters}) async {
-    return await dio.put<T>(path, data: data, queryParameters: queryParameters);
+  /// Performs a DELETE request and maps any [DioException] to a typed
+  /// [ApiException].
+  Future<Response<T>> delete<T>(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      return await dio.delete<T>(path, data: data, queryParameters: queryParameters);
+    } on DioException catch (e) {
+      throw apiExceptionFromDio(e);
+    }
   }
 
-  Future<Response<T>> delete<T>(String path, {dynamic data, Map<String, dynamic>? queryParameters}) async {
-    return await dio.delete<T>(path, data: data, queryParameters: queryParameters);
-  }
-
-  Future<Response<T>> patch<T>(String path, {dynamic data, Map<String, dynamic>? queryParameters}) async {
-    return await dio.patch<T>(path, data: data, queryParameters: queryParameters);
+  /// Performs a PATCH request and maps any [DioException] to a typed
+  /// [ApiException].
+  Future<Response<T>> patch<T>(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      return await dio.patch<T>(path, data: data, queryParameters: queryParameters);
+    } on DioException catch (e) {
+      throw apiExceptionFromDio(e);
+    }
   }
 }

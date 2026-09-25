@@ -1,12 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'core/design_system/design_system.dart';
+import 'core/push_notification_service.dart';
 import 'router/app_router.dart';
 
-class IgnitionPayApp extends StatelessWidget {
+class IgnitionPayApp extends StatefulWidget {
   const IgnitionPayApp({super.key});
+
+  @override
+  State<IgnitionPayApp> createState() => _IgnitionPayAppState();
+}
+
+class _IgnitionPayAppState extends State<IgnitionPayApp> {
+  @override
+  void dispose() {
+    unawaited(PushNotificationService().dispose());
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,11 +42,15 @@ class IgnitionPayApp extends StatelessWidget {
         final isDark = Theme.of(context).brightness == Brightness.dark;
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: SystemUiOverlayStyle(
-            statusBarColor: (isDark ? AppColors.primaryDark : AppColors.primary).withAlpha(230),
-            statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+            statusBarColor: (isDark ? AppColors.primaryDark : AppColors.primary)
+                .withAlpha(230),
+            statusBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark,
             statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-            systemNavigationBarColor: isDark ? AppColors.surfaceDark : AppColors.surface,
-            systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+            systemNavigationBarColor:
+                isDark ? AppColors.surfaceDark : AppColors.surface,
+            systemNavigationBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark,
           ),
           child: child ?? const SizedBox.shrink(),
         );

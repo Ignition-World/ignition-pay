@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'app_color_tokens.dart';
 import 'app_colors.dart';
 
 /// Cross-platform typography for Ignition Mobile.
@@ -109,6 +110,9 @@ abstract final class AppTheme {
       primaryTextTheme: primaryTextTheme,
       // Keep ThemeData-level family aligned with TextTheme (not per-widget).
       fontFamily: fontFamily,
+      extensions: <ThemeExtension<dynamic>>[
+        appColorTokensFor(brightness),
+      ],
     );
   }
 }
