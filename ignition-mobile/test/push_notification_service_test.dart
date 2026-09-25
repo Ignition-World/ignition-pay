@@ -9,6 +9,14 @@ void main() {
 
       expect(identical(instance1, instance2), isTrue);
     });
+
+    test('dispose is safe before initialization and on repeated calls', () async {
+      final service = PushNotificationService();
+
+      await Future.wait([service.dispose(), service.dispose()]);
+
+      expect(service.activeListenerCount, 0);
+    });
   });
 
   group('_stableIdFromMessageId()', () {

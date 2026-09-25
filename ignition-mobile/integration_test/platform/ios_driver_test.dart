@@ -46,7 +46,10 @@ void main() {
   test(
     'Permission request resolves to AuthorizationStatus.authorized on iOS',
     () async {
-      addTearDown(() => clearPushNotificationChannelMocks(binding));
+      addTearDown(() async {
+        await PushNotificationService().dispose();
+        clearPushNotificationChannelMocks(binding);
+      });
 
       stubIosPushNotificationChannels(binding);
 
@@ -75,7 +78,10 @@ void main() {
   test(
     'setForegroundNotificationPresentationOptions is propagated',
     () async {
-      addTearDown(() => clearPushNotificationChannelMocks(binding));
+      addTearDown(() async {
+        await PushNotificationService().dispose();
+        clearPushNotificationChannelMocks(binding);
+      });
 
       stubIosPushNotificationChannels(binding);
 
@@ -91,8 +97,8 @@ void main() {
       await PushNotificationService().init();
       expect(presentationOptions, isNotNull);
       expect(presentationOptions!['alert'], isTrue);
-      expect(presentationOptions['badge'], isTrue);
-      expect(presentationOptions['sound'], isTrue);
+      expect(presentationOptions!['badge'], isTrue);
+      expect(presentationOptions!['sound'], isTrue);
     },
     skip: onIos,
   );
@@ -100,7 +106,10 @@ void main() {
   test(
     'Foreground iOS RemoteMessage renders local notification',
     () async {
-      addTearDown(() => clearPushNotificationChannelMocks(binding));
+      addTearDown(() async {
+        await PushNotificationService().dispose();
+        clearPushNotificationChannelMocks(binding);
+      });
 
       stubIosPushNotificationChannels(binding);
 
@@ -108,21 +117,22 @@ void main() {
       const localChannel = MethodChannel('dexterous.com/flutter/local_notifications');
       binding.defaultBinaryMessenger.setMockMethodCallHandler(localChannel, (call) async {
         if (call.method == 'show') {
-          recordedShow = Map<dynamic, dynamic>.from(call.arguments as Map);
+          recordedShow = Map<dynamic, dynamic>.from(call.arguments as Map<dynamic, dynamic>);
         }
         return null;
       });
 
       await PushNotificationService().init();
-      await binding.pumpAndSettle();
+      await binding.pump();
 
       const fcmChannel = MethodChannel('plugins.flutter.io/firebase_messaging');
       final codec = StandardMethodCodec();
-      final call = MethodCall('onMessage', {
+      final call = MethodCall('Messaging#onMessage', {
         'messageId': '4321',
         'notification': {
           'title': 'Ignition Pay',
           'body': 'Deposit confirmed',
+          'android': <String, dynamic>{},
         },
         'data': <String, dynamic>{},
       });
@@ -132,11 +142,11 @@ void main() {
         codec.encodeMethodCall(call),
         (_) {},
       );
-      await binding.pumpAndSettle();
+      await binding.pump();
 
       expect(recordedShow, isNotNull);
       expect(recordedShow!['title'], 'Ignition Pay');
-      expect(recordedShow['body'], 'Deposit confirmed');
+      expect(recordedShow!['body'], 'Deposit confirmed');
     },
     skip: onIos,
   );
@@ -144,7 +154,10 @@ void main() {
   test(
     'getToken() returns a non-empty FCM token once init completed',
     () async {
-      addTearDown(() => clearPushNotificationChannelMocks(binding));
+      addTearDown(() async {
+        await PushNotificationService().dispose();
+        clearPushNotificationChannelMocks(binding);
+      });
 
       stubIosPushNotificationChannels(binding);
 
