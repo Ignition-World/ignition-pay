@@ -11,6 +11,10 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsService } from '../auth/permissions/permissions.service';
 import { PermissionsGuard } from '../auth/permissions/permissions.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { QueueModule } from '../queue/queue.module';
+import { DashboardCacheService } from './dashboard-cache.service';
+import { DashboardCacheProcessor } from '../queue/processors/dashboard-cache.processor';
+import { DashboardCacheScheduler } from '../queue/processors/dashboard-cache.scheduler';
 
 @Module({
   imports: [
@@ -18,6 +22,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ConfigModule,
     SessionModule,
     NotificationsModule,
+    QueueModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -30,12 +35,15 @@ import { NotificationsModule } from '../notifications/notifications.module';
   controllers: [UsersController, AdminUsersController],
   providers: [
     UsersService,
+    DashboardCacheService,
+    DashboardCacheProcessor,
+    DashboardCacheScheduler,
     JwtAuthGuard,
     AdminGuard,
     RolesGuard,
     PermissionsService,
     PermissionsGuard,
   ],
-  exports: [UsersService],
+  exports: [UsersService, DashboardCacheService],
 })
 export class UsersModule {}

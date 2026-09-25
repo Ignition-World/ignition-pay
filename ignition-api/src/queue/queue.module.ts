@@ -8,6 +8,7 @@ import {
   QUEUE_ANALYTICS,
   QUEUE_PAYMENTS,
   QUEUE_HORIZON,
+  QUEUE_DASHBOARD,
 } from './queue.constants';
 import { AnalyticsProcessor } from './processors/analytics.processor';
 import { ContractEventsProcessor } from './processors/contract-events.processor';
@@ -53,6 +54,7 @@ const DEAD_LETTER_SETTINGS = {
       { name: QUEUE_ANALYTICS },
       { name: QUEUE_PAYMENTS },
       { name: QUEUE_HORIZON },
+      { name: QUEUE_DASHBOARD },
     ),
     PrismaModule,
     ConfigModule,
