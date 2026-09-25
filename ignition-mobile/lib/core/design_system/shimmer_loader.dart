@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
+import 'app_color_tokens.dart';
+
 class ShimmerLoader extends StatelessWidget {
   const ShimmerLoader({
     super.key,
@@ -14,11 +16,10 @@ class ShimmerLoader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!enabled) return child;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tokens = context.appColors;
     return Shimmer.fromColors(
-      baseColor: isDark ? const Color(0xFF2C2C3E) : const Color(0xFFE0E0E0),
-      highlightColor:
-          isDark ? const Color(0xFF3D3D55) : const Color(0xFFF5F5F5),
+      baseColor: tokens.shimmerBase,
+      highlightColor: tokens.shimmerHighlight,
       child: child,
     );
   }
@@ -44,7 +45,7 @@ class ShimmerBox extends StatelessWidget {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.appColors.placeholderSurface,
           borderRadius: BorderRadius.circular(borderRadius),
         ),
       ),

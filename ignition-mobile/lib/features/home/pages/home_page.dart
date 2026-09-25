@@ -1,9 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../../core/design_system/app_error_banner.dart';
+import '../../../core/design_system/design_system.dart';
 import '../../../core/local/balance_cache.dart';
-import '../services/home_service.dart';
+import '../../../core/network/api_exception.dart';
 
 /// Home dashboard with pull-to-refresh.
 ///
@@ -21,8 +22,6 @@ class HomePage extends StatefulWidget {
     super.key,
     this.walletAddress = 'current-wallet',
     this.fetchBalances,
-    this.dataSource,
-    this.balanceCache,
   });
 
   final String walletAddress;
@@ -51,10 +50,15 @@ class _HomePageState extends State<HomePage> {
   late final HomeDataSource _dataSource = widget.dataSource ?? HomeService();
 
   CachedBalances? _cached;
-  List<Map<String, dynamic>> _transactions = const [];
-  List<Map<String, dynamic>> _notifications = const [];
-  bool _refreshing = false;
-  String? _error;
+
+  /// True while the background fetch is in progress.
+  bool _loading = false;
+
+  /// True while the user explicitly triggered a retry.
+  bool _retrying = false;
+
+  /// Non-null when the most recent fetch failed.
+  ApiException? _error;
 
   @override
   void initState() {
@@ -62,12 +66,13 @@ class _HomePageState extends State<HomePage> {
     _loadInitialBalances();
   }
 
-  /// Launch-time load: show cached balances immediately, then refresh them
-  /// only when the legacy [HomePage.fetchBalances] seam is wired up.
-  ///
-  /// The dashboard data source is intentionally not called here so a
-  /// logged-out launch never fires an authenticated request.
-  Future<void> _loadInitialBalances() async {
+  Future<void> _loadBalances({
+    bool invalidate = false,
+    bool isRetry = false,
+  }) async {
+    if (invalidate) await _cache.invalidate(widget.walletAddress);
+
+    // Read whatever is in the cache first so the screen is never blank.
     final cached = await _cache.read(widget.walletAddress);
     if (!mounted) return;
     setState(() => _cached = cached);
@@ -75,59 +80,32 @@ class _HomePageState extends State<HomePage> {
     final fetchBalances = widget.fetchBalances;
     if (fetchBalances == null) return;
 
-    setState(() => _refreshing = true);
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _retrying = isRetry;
+        _error = null;
+      });
+    }
+
     try {
       final fresh = await fetchBalances();
       await _cache.write(widget.walletAddress, fresh);
       final refreshed = await _cache.read(widget.walletAddress);
       if (mounted) setState(() => _cached = refreshed);
-    } catch (_) {
-      // Keep whatever is cached and let the user retry via pull-to-refresh.
-      if (mounted) setState(() => _error = 'Could not refresh your home data.');
+    } on UnauthorizedException {
+      // 401 — session expired; redirect to login instead of showing retry.
+      if (mounted) {
+        context.go('/login');
+      }
+      return;
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e);
     } finally {
-      if (mounted) setState(() => _refreshing = false);
-    }
-  }
-
-  /// Reloads balances, transactions and notifications from the data source.
-  ///
-  /// Existing data stays visible for the whole flight; only a successful
-  /// response replaces it. Failures keep the current data and surface an
-  /// inline error with a Retry action.
-  Future<void> _refreshAll() async {
-    if (_refreshing) return;
-    setState(() {
-      _refreshing = true;
-      _error = null;
-    });
-
-    try {
-      final results = await Future.wait<Object?>([
-        if (widget.fetchBalances != null)
-          widget.fetchBalances!()
-        else
-          _dataSource.fetchBalances(),
-        _dataSource.fetchTransactions(),
-        _dataSource.fetchNotifications(),
-      ]);
-      final balances = results[0] as Map<String, dynamic>;
-      final transactions = results[1] as List<Map<String, dynamic>>;
-      final notifications = results[2] as List<Map<String, dynamic>>;
-
-      await _cache.write(widget.walletAddress, balances);
-      final refreshed = await _cache.read(widget.walletAddress);
-      if (!mounted) return;
-      setState(() {
-        _cached = refreshed;
-        _transactions = transactions;
-        _notifications = notifications;
+      if (mounted) setState(() {
+        _loading = false;
+        _retrying = false;
       });
-    } catch (_) {
-      // Refresh failed: keep showing the data we already have.
-      if (!mounted) return;
-      setState(() => _error = 'Could not refresh your home data.');
-    } finally {
-      if (mounted) setState(() => _refreshing = false);
     }
   }
 
@@ -149,34 +127,74 @@ class _HomePageState extends State<HomePage> {
         title: const Text('Ignition Pay'),
         centerTitle: true,
       ),
-      body: useCupertino
-          ? _buildCupertinoBody(sections)
-          : _buildMaterialBody(sections),
-    );
-  }
-
-  Widget _buildMaterialBody(List<Widget> sections) {
-    return RefreshIndicator(
-      onRefresh: _refreshAll,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
-        children: sections,
+      body: RefreshIndicator(
+        onRefresh: () => _loadBalances(invalidate: true),
+        child: _buildBody(),
       ),
     );
   }
 
-  Widget _buildCupertinoBody(List<Widget> sections) {
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        CupertinoSliverRefreshControl(onRefresh: _refreshAll),
-        SliverPadding(
-          padding: const EdgeInsets.all(20),
-          sliver: SliverList(
-            delegate: SliverChildListDelegate(sections),
+  Widget _buildBody() {
+    // Show error state when the fetch failed and we have no cache to fall back
+    // on, or when a previous cached load followed by a failure should still
+    // surface the error UI.
+    if (_error != null) {
+      return ListView(
+        children: [
+          // If stale data is available, show it above the error banner so the
+          // user still sees something useful.
+          if (_cached != null) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Showing cached balances',
+                    style: TextStyle(color: Colors.orange),
+                  ),
+                  const SizedBox(height: 8),
+                  ..._cached!.balances.entries.map(
+                    (entry) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(entry.key),
+                      trailing: Text('${entry.value}'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          ErrorStateView(
+            key: const Key('home_error_state'),
+            error: _error!,
+            retrying: _retrying,
+            onRetry: () => _loadBalances(invalidate: true, isRetry: true),
           ),
-        ),
+        ],
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        if (_cached?.isStale ?? false)
+          const Text(
+            'Showing cached balances',
+            style: TextStyle(color: Colors.orange),
+          ),
+        if (_loading) const LinearProgressIndicator(),
+        const SizedBox(height: 16),
+        if (_cached == null)
+          const Text('No cached balances yet', style: TextStyle(fontSize: 18))
+        else
+          ..._cached!.balances.entries.map(
+            (entry) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(entry.key),
+              trailing: Text('${entry.value}'),
+            ),
+          ),
       ],
     );
   }

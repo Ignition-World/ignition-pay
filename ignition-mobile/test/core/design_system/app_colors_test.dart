@@ -12,10 +12,10 @@ void main() {
       expect(AppColors.surfaceDark, const Color(0xFF1A1A2E));
       expect(AppColors.onSurface, const Color(0xFF1A1A2E));
       expect(AppColors.onSurfaceDark, const Color(0xFFF5F5FF));
-      expect(AppColors.muted, const Color(0xFF9E9E9E));
-      expect(AppColors.success, const Color(0xFF4CAF50));
-      expect(AppColors.error, const Color(0xFFE53935));
-      expect(AppColors.warning, const Color(0xFFFB8C00));
+      expect(AppColors.muted, const Color(0xFF616161));
+      expect(AppColors.success, const Color(0xFF2E7D32));
+      expect(AppColors.error, const Color(0xFFD32F2F));
+      expect(AppColors.warning, const Color(0xFFF57C00));
     });
 
     test('light and dark surface pairs remain distinct', () {
