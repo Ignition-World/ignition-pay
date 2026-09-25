@@ -1,0 +1,23 @@
+/* Print stylesheet for Transaction History */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 12pt;
+  }
+
+  nav, header, footer, .no-print, button {
+    display: none !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    border: 1px solid #dddddd !important;
+    padding: 8px !important;
+    text-align: left !important;
+  }
+}
