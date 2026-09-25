@@ -5,9 +5,12 @@ import {
   Min,
   Max,
   IsString,
+  IsEnum,
   IsIn,
   IsDateString,
 } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { WalletNetwork } from '../../wallets/dto/create-wallet.dto';
 
 /**
  * Query DTO for GET /transactions (Issue #586).
@@ -76,6 +79,10 @@ export class TransactionDto {
   /** Amount as string to preserve Decimal(20,7) precision (Issue #409) */
   amount: string;
   assetCode: string;
+  assetIssuer?: string | null;
+  network?: WalletNetwork;
+  feeAmount?: string;
+  feeAssetCode?: string;
   stellarTxHash: string | null;
   status: string;
   createdAt: Date;
@@ -100,6 +107,14 @@ export class SubmitTransactionDto {
   toWalletId: string;
   amount: string;
   assetCode?: string;
+  @ApiPropertyOptional({ enum: WalletNetwork, default: WalletNetwork.STELLAR })
+  @IsOptional()
+  @IsEnum(WalletNetwork)
+  network?: WalletNetwork = WalletNetwork.STELLAR;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  assetIssuer?: string;
   /** Idempotency key — provide the Stellar tx hash to dedupe retries (#244) */
   stellarTxHash?: string;
 }
