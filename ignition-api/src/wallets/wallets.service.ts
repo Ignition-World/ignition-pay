@@ -14,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateWalletDto, WalletNetwork } from './dto/create-wallet.dto';
 import { WalletStatus, WalletType } from '@prisma/client';
 import { WalletLimitService } from '../wallet/services/wallet-limit.service';
+import { generateNetworkAddress, isValidNetworkAddress } from './network-address.validator';
 
 @Injectable()
 export class WalletsService {
@@ -56,15 +57,16 @@ export class WalletsService {
 
     // CUSTODIAL: auto-generate a keypair when no address is supplied.
     // NON_CUSTODIAL: only the user-provided public address is stored.
-    const depositAddress =
-      dto.depositAddress ?? StellarSdk.Keypair.random().publicKey();
+    if (network !== WalletNetwork.STELLAR && !dto.depositAddress) {
+      throw new BadRequestException(
+        `depositAddress is required for ${network} wallets`,
+      );
+    }
 
-    // Validate Stellar addresses
-    if (
-      network === WalletNetwork.STELLAR &&
-      !StrKey.isValidEd25519PublicKey(depositAddress)
-    ) {
-      throw new BadRequestException('Invalid Stellar deposit address');
+    const depositAddress = dto.depositAddress ?? generateNetworkAddress(network);
+
+    if (!isValidNetworkAddress(depositAddress, network)) {
+      throw new BadRequestException(`Invalid ${network} deposit address`);
     }
 
     // Ensure deposit address is not already in use

@@ -1,6 +1,8 @@
 import { ConflictException, BadRequestException } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { Prisma } from '@prisma/client';
+import StellarSdk from '@stellar/stellar-sdk';
+import { WalletNetwork } from '../wallets/dto/create-wallet.dto';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -393,5 +395,76 @@ describe('TransactionsService.submitTransaction', () => {
         data: expect.objectContaining({ stellarTxHash: null }),
       }),
     );
+  });
+
+  it.each([
+    [WalletNetwork.STELLAR, 'XLM', '0.0000100'],
+    [WalletNetwork.ETHEREUM, 'ETH', '0.0001000'],
+    [WalletNetwork.BITCOIN, 'BTC', '0.0000100'],
+  ])('creates a transaction with the %s network fee policy', async (network, assetCode, feeAmount) => {
+    const addresses = {
+      [WalletNetwork.STELLAR]: StellarSdk.Keypair.random().publicKey(),
+      [WalletNetwork.ETHEREUM]: '0x0000000000000000000000000000000000000001',
+      [WalletNetwork.BITCOIN]: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
+    };
+    const networkPrisma = {
+      ...buildPrisma(),
+      wallet: {
+        findUnique: jest.fn(({ where }: any) =>
+          Promise.resolve({
+            id: where.id,
+            network,
+            depositAddress: addresses[network],
+          }),
+        ),
+      },
+    };
+    service = new TransactionsService(networkPrisma as any);
+
+    const result = await service.submitTransaction({
+      fromWalletId: 'wallet-from',
+      toWalletId: 'wallet-to',
+      amount: '1',
+      network,
+      assetCode,
+    });
+
+    expect(result.network).toBe(network);
+    expect(result.feeAmount).toBe(feeAmount);
+    expect(prisma.transaction.create).not.toHaveBeenCalled();
+    expect(networkPrisma.transaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assetCode,
+          feeAmount,
+          feeAssetCode: assetCode,
+          metadata: { network },
+        }),
+      }),
+    );
+  });
+
+  it('rejects an invalid Ethereum wallet address', async () => {
+    const networkPrisma = {
+      ...buildPrisma(),
+      wallet: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'wallet-from',
+          network: WalletNetwork.ETHEREUM,
+          depositAddress: 'not-an-ethereum-address',
+        }),
+      },
+    };
+    service = new TransactionsService(networkPrisma as any);
+
+    await expect(
+      service.submitTransaction({
+        fromWalletId: 'wallet-from',
+        toWalletId: 'wallet-to',
+        amount: '1',
+        network: WalletNetwork.ETHEREUM,
+        assetCode: 'ETH',
+      }),
+    ).rejects.toThrow(BadRequestException);
   });
 });

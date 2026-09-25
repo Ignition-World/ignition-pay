@@ -11,6 +11,17 @@ import {
   SubmitTransactionDto,
   TransactionDto,
 } from './dto/get-transactions.dto';
+import { WalletNetwork } from '../wallets/dto/create-wallet.dto';
+import {
+  isValidNetworkAddress,
+  isValidNetworkIssuer,
+} from '../wallets/network-address.validator';
+
+const NETWORK_FEES: Record<WalletNetwork, { amount: string; asset: string }> = {
+  [WalletNetwork.STELLAR]: { amount: '0.0000100', asset: 'XLM' },
+  [WalletNetwork.ETHEREUM]: { amount: '0.0001000', asset: 'ETH' },
+  [WalletNetwork.BITCOIN]: { amount: '0.0000100', asset: 'BTC' },
+};
 
 // ---------------------------------------------------------------------------
 // Cursor helpers
@@ -113,6 +124,10 @@ export class TransactionsService {
         toWalletId: true,
         amount: true,
         assetCode: true,
+        assetIssuer: true,
+        metadata: true,
+        feeAmount: true,
+        feeAssetCode: true,
         stellarTxHash: true,
         status: true,
         createdAt: true,
@@ -139,6 +154,10 @@ export class TransactionsService {
       // Return amount as string to preserve Decimal(20,7) precision (#409).
       amount: t.amount.toString(),
       assetCode: t.assetCode,
+      assetIssuer: t.assetIssuer ?? null,
+      network: (t.metadata as { network?: WalletNetwork } | null)?.network,
+      feeAmount: t.feeAmount?.toString() ?? '0',
+      feeAssetCode: t.feeAssetCode,
       stellarTxHash: t.stellarTxHash ?? null,
       status: t.status,
       createdAt: t.createdAt,
@@ -160,6 +179,39 @@ export class TransactionsService {
       );
     }
 
+    const network = dto.network ?? WalletNetwork.STELLAR;
+    const fee = NETWORK_FEES[network];
+    const assetCode = (dto.assetCode ?? fee.asset).toUpperCase();
+    const [fromWallet, toWallet] = await Promise.all([
+      this.prisma.wallet?.findUnique?.({ where: { id: dto.fromWalletId } }),
+      this.prisma.wallet?.findUnique?.({ where: { id: dto.toWalletId } }),
+    ]);
+
+    for (const wallet of [fromWallet, toWallet].filter(Boolean)) {
+      if (wallet.network !== network) {
+        throw new BadRequestException(
+          `Wallet ${wallet.id} does not belong to the ${network} network`,
+        );
+      }
+      if (!isValidNetworkAddress(wallet.depositAddress, network)) {
+        throw new BadRequestException(`Invalid ${network} wallet address`);
+      }
+    }
+
+    if (network === WalletNetwork.STELLAR) {
+      if (assetCode === 'XLM' && dto.assetIssuer) {
+        throw new BadRequestException('XLM must not have an asset issuer');
+      }
+      if (assetCode !== 'XLM' && (!dto.assetIssuer || !isValidNetworkIssuer(dto.assetIssuer, network))) {
+        throw new BadRequestException('A valid Stellar asset issuer is required for non-XLM assets');
+      }
+    } else {
+      const nativeAsset = fee.asset;
+      if (assetCode !== nativeAsset || dto.assetIssuer) {
+        throw new BadRequestException(`${network} transactions must use ${nativeAsset} without an asset issuer`);
+      }
+    }
+
     // Idempotency check: if we already have a record with this hash, return it.
     if (dto.stellarTxHash) {
       const existing = await this.prisma.transaction.findUnique({
@@ -172,6 +224,10 @@ export class TransactionsService {
           toWalletId: existing.toWalletId,
           amount: existing.amount.toString(),
           assetCode: existing.assetCode,
+          assetIssuer: existing.assetIssuer ?? null,
+          network: (existing.metadata as { network?: WalletNetwork } | null)?.network,
+          feeAmount: existing.feeAmount?.toString() ?? '0',
+          feeAssetCode: existing.feeAssetCode,
           stellarTxHash: existing.stellarTxHash ?? null,
           status: existing.status,
           createdAt: existing.createdAt,
@@ -187,9 +243,13 @@ export class TransactionsService {
           fromWalletId: dto.fromWalletId,
           toWalletId: dto.toWalletId,
           amount: dto.amount,
-          assetCode: dto.assetCode ?? 'XLM',
+          assetCode,
+          assetIssuer: dto.assetIssuer ?? null,
+          feeAmount: fee.amount,
+          feeAssetCode: fee.asset,
           stellarTxHash: dto.stellarTxHash ?? null,
           status: 'PENDING',
+          metadata: { network },
         },
       });
 
@@ -199,6 +259,10 @@ export class TransactionsService {
         toWalletId: created.toWalletId,
         amount: created.amount.toString(),
         assetCode: created.assetCode,
+        assetIssuer: created.assetIssuer ?? null,
+        network,
+        feeAmount: created.feeAmount?.toString() ?? fee.amount,
+        feeAssetCode: created.feeAssetCode ?? fee.asset,
         stellarTxHash: created.stellarTxHash ?? null,
         status: created.status,
         createdAt: created.createdAt,
@@ -221,6 +285,10 @@ export class TransactionsService {
             toWalletId: existing.toWalletId,
             amount: existing.amount.toString(),
             assetCode: existing.assetCode,
+            assetIssuer: existing.assetIssuer ?? null,
+            network: (existing.metadata as { network?: WalletNetwork } | null)?.network,
+            feeAmount: existing.feeAmount?.toString() ?? '0',
+            feeAssetCode: existing.feeAssetCode,
             stellarTxHash: existing.stellarTxHash ?? null,
             status: existing.status,
             createdAt: existing.createdAt,
