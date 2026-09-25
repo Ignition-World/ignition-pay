@@ -21,6 +21,14 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const HomePage(),
     ),
     GoRoute(
+      path: '/login',
+      name: 'login',
+      builder: (context, state) => Scaffold(
+        appBar: AppBar(title: const Text('Sign in')),
+        body: const Center(child: Text('Login screen')), // replace with LoginPage()
+      ),
+    ),
+    GoRoute(
       path: '/send',
       name: 'send',
       builder: (context, state) => const SecureScreenWrapper(
