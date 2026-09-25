@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -10,24 +11,65 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint("Handling a background message: ${message.messageId}");
 }
 
+void _handleRemoteMessageTap(RemoteMessage message) {
+  debugPrint("Notification tapped with payload: ${message.data}");
+  // Route user based on message.data here in the future.
+}
+
+void _handleLocalNotificationResponse(NotificationResponse response) {
+  final payload = response.payload;
+  if (payload != null) {
+    debugPrint("Local notification tapped with payload: $payload");
+    // Route user based on payload here in the future.
+  }
+}
+
 class PushNotificationService {
-  static final PushNotificationService _instance = PushNotificationService._internal();
+  static final PushNotificationService _instance =
+      PushNotificationService._internal();
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
 
-  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  late final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
 
+  static bool _backgroundHandlerRegistered = false;
+  StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  StreamSubscription<RemoteMessage>? _openedAppSubscription;
+  Future<void>? _initializing;
+  Future<void>? _disposing;
   bool _isInitialized = false;
 
-  Future<void> init() async {
-    if (_isInitialized) return;
+  @visibleForTesting
+  int get activeListenerCount =>
+      (_foregroundSubscription == null ? 0 : 1) +
+      (_openedAppSubscription == null ? 0 : 1);
 
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  Future<void> init() {
+    if (_disposing != null) {
+      return _disposing!.then((_) => init());
+    }
+    if (_isInitialized) return Future<void>.value();
+    return _initializing ??= _initialize().whenComplete(() {
+      _initializing = null;
+    });
+  }
+
+  Future<void> _initialize() async {
+    if (!_backgroundHandlerRegistered) {
+      // The background entry point belongs to the isolate, not to an app widget.
+      FirebaseMessaging.onBackgroundMessage(
+        _firebaseMessagingBackgroundHandler,
+      );
+      _backgroundHandlerRegistered = true;
+    }
 
     // Initialize local notifications for foreground popups
-    const AndroidInitializationSettings androidInitSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const DarwinInitializationSettings iosInitSettings = DarwinInitializationSettings();
+    const AndroidInitializationSettings androidInitSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const DarwinInitializationSettings iosInitSettings =
+        DarwinInitializationSettings();
     const InitializationSettings initSettings = InitializationSettings(
       android: androidInitSettings,
       iOS: iosInitSettings,
@@ -35,13 +77,11 @@ class PushNotificationService {
 
     await _localNotificationsPlugin.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
-        _handleTap(response.payload);
-      },
+      onDidReceiveNotificationResponse: _handleLocalNotificationResponse,
     );
 
-    // Create Android notification channel
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    // Create Android notification channel.
+    const channel = AndroidNotificationChannel(
       'high_importance_channel',
       'High Importance Notifications',
       description: 'This channel is used for important notifications.',
@@ -49,7 +89,8 @@ class PushNotificationService {
     );
 
     await _localNotificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
     await _fcm.setForegroundNotificationPresentationOptions(
@@ -58,58 +99,90 @@ class PushNotificationService {
       sound: true,
     );
 
-    // Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      RemoteNotification? notification = message.notification;
-      AndroidNotification? android = message.notification?.android;
+    try {
+      // Keep ownership of both subscriptions so app teardown can cancel them.
+      _foregroundSubscription = FirebaseMessaging.onMessage.listen(
+        _handleForegroundMessage,
+      );
 
-      if (notification != null && android != null && !kIsWeb) {
-        // Derive a stable integer ID from the FCM messageId so that
-        // flutter_local_notifications can identify (and replace) an already-
-        // displayed alert when the same FCM message is delivered more than
-        // once (e.g. after a reconnect or a duplicate server dispatch).
-        //
-        // notification.hashCode was used previously, but Dart's default
-        // hashCode is based on object identity — it changes on every new
-        // RemoteNotification instance, so every duplicate delivery produced
-        // a brand-new tray entry instead of replacing the existing one.
-        //
-        // We fold the messageId string into a positive 32-bit integer by
-        // summing Unicode code-unit values with a simple Bernstein-style
-        // rotation, then masking to stay within the signed-32-bit range
-        // that Android's notification manager requires.
-        final int notificationId = _stableIdFromMessageId(message.messageId);
-
-        _localNotificationsPlugin.show(
-          notificationId,
-          notification.title,
-          notification.body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              channel.id,
-              channel.name,
-              channelDescription: channel.description,
-              icon: '@mipmap/ic_launcher',
-            ),
-          ),
-          payload: message.data.toString(),
-        );
+      // Handle app opened from terminated state.
+      RemoteMessage? initialMessage = await _fcm.getInitialMessage();
+      if (initialMessage != null) {
+        _handleRemoteMessageTap(initialMessage);
       }
-    });
 
-    // Handle app opened from terminated state
-    RemoteMessage? initialMessage = await _fcm.getInitialMessage();
-    if (initialMessage != null) {
-      _handleRemoteMessageTap(initialMessage);
+      // Handle app opened from background state.
+      _openedAppSubscription = FirebaseMessaging.onMessageOpenedApp.listen(
+        _handleRemoteMessageTap,
+      );
+
+      // Request permissions.
+      await requestPermission();
+
+      _isInitialized = true;
+    } catch (_) {
+      await _cancelSubscriptions();
+      rethrow;
     }
+  }
 
-    // Handle app opened from background state
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteMessageTap);
+  /// Releases the foreground and tap listeners when the app widget unmounts.
+  /// A later [init] can subscribe again without retaining the old callbacks.
+  Future<void> dispose() {
+    return _disposing ??= _dispose().whenComplete(() {
+      _disposing = null;
+    });
+  }
 
-    // Request permissions
-    await requestPermission();
+  Future<void> _dispose() async {
+    try {
+      await _initializing;
+    } catch (_) {
+      // Initialization already cancelled any partially registered listeners.
+    }
+    _isInitialized = false;
+    await _cancelSubscriptions();
+  }
 
-    _isInitialized = true;
+  Future<void> _cancelSubscriptions() async {
+    final foreground = _foregroundSubscription;
+    final openedApp = _openedAppSubscription;
+    _foregroundSubscription = null;
+    _openedAppSubscription = null;
+    await Future.wait([
+      if (foreground != null) foreground.cancel(),
+      if (openedApp != null) openedApp.cancel(),
+    ]);
+  }
+
+  void _handleForegroundMessage(RemoteMessage message) {
+    final notification = message.notification;
+    if (notification == null || notification.android == null || kIsWeb) return;
+
+    // A stable ID replaces a duplicate delivery in the Android tray.
+    final notificationId = _stableIdFromMessageId(message.messageId);
+    const channel = AndroidNotificationChannel(
+      'high_importance_channel',
+      'High Importance Notifications',
+      description: 'This channel is used for important notifications.',
+      importance: Importance.max,
+    );
+    unawaited(
+      _localNotificationsPlugin.show(
+        notificationId,
+        notification.title,
+        notification.body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            channel.id,
+            channel.name,
+            channelDescription: channel.description,
+            icon: '@mipmap/ic_launcher',
+          ),
+        ),
+        payload: message.data.toString(),
+      ),
+    );
   }
 
   Future<void> requestPermission() async {
@@ -127,18 +200,6 @@ class PushNotificationService {
 
   Future<String?> getToken() async {
     return await _fcm.getToken();
-  }
-
-  void _handleRemoteMessageTap(RemoteMessage message) {
-    debugPrint("Notification tapped with payload: ${message.data}");
-    // Route user based on message.data here in the future
-  }
-
-  void _handleTap(String? payload) {
-    if (payload != null) {
-      debugPrint("Local notification tapped with payload: $payload");
-      // Route user based on payload here in the future
-    }
   }
 
   /// Converts a (possibly null) FCM messageId string into a stable positive
