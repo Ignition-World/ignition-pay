@@ -1,11 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/design_system/app_error_banner.dart';
 import '../../../core/local/balance_cache.dart';
 import '../services/home_service.dart';
+import '../widgets/home_skeleton.dart';
 
 /// Home dashboard with pull-to-refresh.
+///
+/// While the first load runs, the page body shows a [HomeSkeleton] instead
+/// of a blank screen. The skeleton stays up for at least 300ms so a fast
+/// response doesn't cause a flash, and is replaced by real data (or an error
+/// banner with Retry) as soon as both conditions hold.
 ///
 /// Pulling down reloads balances, recent transactions and unread
 /// notifications through [HomeDataSource]. Existing data stays on screen for
@@ -56,10 +64,41 @@ class _HomePageState extends State<HomePage> {
   bool _refreshing = false;
   String? _error;
 
+  /// Whether the first load (cache read + optional initial fetch) finished.
+  bool _initialLoadDone = false;
+
+  /// Whether the 300ms minimum skeleton window elapsed.
+  bool _minSkeletonElapsed = false;
+
+  /// True until the skeleton is dismissed in favour of real content.
+  bool _showingSkeleton = true;
+
+  Timer? _skeletonMinTimer;
+
+  /// Acceptance criterion: the skeleton must not flash away faster than
+  /// 300ms, otherwise a slow first frame reads as a flicker.
+  static const Duration _minSkeletonDuration = Duration(milliseconds: 300);
+
   @override
   void initState() {
     super.initState();
+    _skeletonMinTimer = Timer(_minSkeletonDuration, () {
+      _minSkeletonElapsed = true;
+      _dismissSkeletonIfReady();
+    });
     _loadInitialBalances();
+  }
+
+  /// Hides the skeleton once the initial load settled AND the 300ms minimum
+  /// window passed. Whichever condition arrives second wins, so a slow load
+  /// keeps the skeleton for its whole duration while a fast one is held for
+  /// the full 300ms.
+  void _dismissSkeletonIfReady() {
+    if (!_initialLoadDone || !_minSkeletonElapsed || !_showingSkeleton) {
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _showingSkeleton = false);
   }
 
   /// Launch-time load: show cached balances immediately, then refresh them
@@ -67,25 +106,38 @@ class _HomePageState extends State<HomePage> {
   ///
   /// The dashboard data source is intentionally not called here so a
   /// logged-out launch never fires an authenticated request.
+  ///
+  /// Always marks the initial load as done (even when the cache read itself
+  /// fails) so the skeleton can never get stuck on screen.
   Future<void> _loadInitialBalances() async {
-    final cached = await _cache.read(widget.walletAddress);
-    if (!mounted) return;
-    setState(() => _cached = cached);
-
-    final fetchBalances = widget.fetchBalances;
-    if (fetchBalances == null) return;
-
-    setState(() => _refreshing = true);
     try {
-      final fresh = await fetchBalances();
-      await _cache.write(widget.walletAddress, fresh);
-      final refreshed = await _cache.read(widget.walletAddress);
-      if (mounted) setState(() => _cached = refreshed);
+      final cached = await _cache.read(widget.walletAddress);
+      if (!mounted) return;
+      setState(() => _cached = cached);
+
+      final fetchBalances = widget.fetchBalances;
+      if (fetchBalances == null) return;
+
+      setState(() => _refreshing = true);
+      try {
+        final fresh = await fetchBalances();
+        await _cache.write(widget.walletAddress, fresh);
+        final refreshed = await _cache.read(widget.walletAddress);
+        if (mounted) setState(() => _cached = refreshed);
+      } catch (_) {
+        // Keep whatever is cached and let the user retry via pull-to-refresh.
+        if (mounted) {
+          setState(() => _error = 'Could not refresh your home data.');
+        }
+      } finally {
+        if (mounted) setState(() => _refreshing = false);
+      }
     } catch (_) {
-      // Keep whatever is cached and let the user retry via pull-to-refresh.
-      if (mounted) setState(() => _error = 'Could not refresh your home data.');
+      // Cache read failed: show the skeleton-free empty state instead of
+      // hanging on a blank page.
     } finally {
-      if (mounted) setState(() => _refreshing = false);
+      _initialLoadDone = true;
+      _dismissSkeletonIfReady();
     }
   }
 
@@ -133,6 +185,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _skeletonMinTimer?.cancel();
     if (_ownsCache) _cache.close();
     super.dispose();
   }
@@ -182,6 +235,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<Widget> _buildSections() {
+    if (_showingSkeleton) return const [HomeSkeleton()];
+
     return [
       if (_error != null) ...[
         AppErrorBanner(message: _error!),
