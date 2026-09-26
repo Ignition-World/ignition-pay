@@ -1,7 +1,21 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show QueryExecutor;
+import 'package:drift/drift.dart' show OpeningDetails, QueryExecutor, QueryExecutorUser;
 import 'package:drift_flutter/drift_flutter.dart';
+
+/// Minimal [QueryExecutorUser] opening the raw-SQL balance database.
+class _BalanceCacheUser extends QueryExecutorUser {
+  _BalanceCacheUser();
+
+  @override
+  int get schemaVersion => 1;
+
+  @override
+  Future<void> beforeOpen(
+    QueryExecutor executor,
+    OpeningDetails details,
+  ) async {}
+}
 
 class CachedBalances {
   final String walletAddress;
@@ -27,6 +41,7 @@ class BalanceCache {
 
   Future<void> _ensureReady() async {
     if (_ready) return;
+    await _executor.ensureOpen(_BalanceCacheUser());
     await _executor.runCustom('''
       CREATE TABLE IF NOT EXISTS wallet_balance_cache (
         wallet_address TEXT PRIMARY KEY NOT NULL,

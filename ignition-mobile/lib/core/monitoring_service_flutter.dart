@@ -17,10 +17,10 @@
 ///   },
 /// );
 /// ```
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 class MonitoringService {
@@ -30,59 +30,48 @@ class MonitoringService {
   // Initialisation
   // ---------------------------------------------------------------------------
 
-  /// Initialises crash reporting and error monitoring, then invokes [runApp].
+  /// Initialises crash reporting and error monitoring.
   ///
-  /// Call this once, as early as possible in [main], **before** calling
-  /// Flutter's `runApp`.  [runApp] is forwarded to [SentryFlutter.init] so
-  /// that Sentry can capture errors that occur during app start-up.
+  /// Call this **after** the first frame has been rendered (#684): Sentry
+  /// installs global error handlers, patches the navigator observer and
+  /// starts its own frame instrumentation, and doing that work before the home
+  /// screen paints makes the first frame measurably slower. `main()` invokes
+  /// it from a post-frame callback.
   ///
-  /// When [SENTRY_DSN] is empty (e.g. in local development), [runApp] is
-  /// called directly so the app still starts normally.
-  static Future<void> init({Future<void> Function()? runApp}) async {
-    // --- Firebase Crashlytics (Android / iOS only) --------------------------
-    if (!kIsWeb) {
-      await Firebase.initializeApp();
+  /// Crashlytics no longer needs anything here: Firebase Core is initialised
+  /// lazily by `LazyFirebase` and installs the Crashlytics error handlers
+  /// itself.
+  static Future<void> initAfterFirstFrame() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    _initializeFrameTracking();
 
-      // Forward Flutter framework errors (render exceptions, etc.) to
-      // Crashlytics so they appear in the Firebase console.
-      FlutterError.onError =
-          FirebaseCrashlytics.instance.recordFlutterFatalError;
-
-      // Forward async errors that escape the root Flutter zone (e.g. Future
-      // callbacks that throw before runApp is called).
-      PlatformDispatcher.instance.onError = (error, stack) {
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-        return true;
-      };
-    }
-
-    // --- Sentry (all platforms) ---------------------------------------------
     // SENTRY_DSN is injected at build time via:
     //   flutter run --dart-define=SENTRY_DSN=https://...
     const sentryDsn = String.fromEnvironment('SENTRY_DSN');
+    if (sentryDsn.isEmpty) return;
 
-    if (sentryDsn.isNotEmpty) {
-      await SentryFlutter.init(
-        (options) {
-          options.dsn = sentryDsn;
-          // Capture 100 % of traces; tune down in high-traffic production.
-          options.tracesSampleRate = 1.0;
-          options.attachStacktrace = true;
-          options.environment =
-              kReleaseMode ? 'production' : 'development';
-        },
-        appRunner: () async {
-          WidgetsFlutterBinding.ensureInitialized();
-          _initializeFrameTracking();
-          await runApp?.call();
-        },
-      );
-    } else {
-      // No Sentry DSN — invoke the runApp callback directly.
-      WidgetsFlutterBinding.ensureInitialized();
-      _initializeFrameTracking();
-      await runApp?.call();
-    }
+    // Keep whatever Crashlytics installed (or the default handler) so
+    // initialising Sentry after the first frame does not silently drop errors
+    // that were already being reported.
+    final previousOnError = FlutterError.onError;
+
+    await SentryFlutter.init(
+      (options) {
+        options.dsn = sentryDsn;
+        // Capture 100 % of traces; tune down in high-traffic production.
+        options.tracesSampleRate = 1.0;
+        options.attachStacktrace = true;
+        options.environment = kReleaseMode ? 'production' : 'development';
+      },
+    );
+
+    final sentryOnError = FlutterError.onError;
+    FlutterError.onError = (FlutterErrorDetails details) {
+      sentryOnError?.call(details);
+      if (previousOnError != null && previousOnError != sentryOnError) {
+        previousOnError(details);
+      }
+    };
   }
 
   // ---------------------------------------------------------------------------
