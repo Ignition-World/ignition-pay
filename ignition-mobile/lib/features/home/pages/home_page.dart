@@ -143,6 +143,146 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  late final TransactionStreamService _streamService;
+  late final FlutterLocalNotificationsPlugin _notifications;
+  final List<TransactionModel> _transactions = [];
+  final Map<String, TransactionModel> _transactionMap = {};
+  TransactionConnectionState _connectionState = TransactionConnectionState.connecting;
+  StreamSubscription<List<TransactionModel>>? _transactionsSub;
+  StreamSubscription<TransactionConnectionState>? _connectionStateSub;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeServices();
+  }
+
+  Future<void> _initializeServices() async {
+    _notifications = FlutterLocalNotificationsPlugin();
+    await _initializeNotifications();
+
+    final apiClient = ApiClient();
+    apiClient.initialize();
+
+    _streamService = TransactionStreamService(
+      apiClient: apiClient,
+      envConfig: EnvConfig(),
+    );
+
+    _transactionsSub = _streamService.transactionsStream.listen(_onTransactionsUpdate);
+    _connectionStateSub = _streamService.connectionStateStream.listen(_onConnectionStateChange);
+
+    await _streamService.initialize();
+  }
+
+  Future<void> _initializeNotifications() async {
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings();
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+
+    await _notifications.initialize(initSettings);
+
+    // Create notification channel for Android
+    const channel = AndroidNotificationChannel(
+      'transaction_confirmations',
+      'Transaction Confirmations',
+      description: 'Notifications for confirmed transactions',
+      importance: Importance.high,
+    );
+    await _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+  }
+
+  void _onTransactionsUpdate(List<TransactionModel> updates) {
+    setState(() {
+      for (final transaction in updates) {
+        final existing = _transactionMap[transaction.id];
+        if (existing != null) {
+          final wasPending = existing.status == TransactionStatus.pending;
+          final isNowCompleted = transaction.status == TransactionStatus.completed;
+
+          // Show notification when pending transaction confirms
+          if (wasPending && isNowCompleted) {
+            _showTransactionConfirmedNotification(transaction);
+          }
+        }
+
+        _transactionMap[transaction.id] = transaction;
+      }
+
+      // Update list maintaining order (newest first)
+      _transactions
+        ..clear()
+        ..addAll(_transactionMap.values.toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
+    });
+  }
+
+  void _onConnectionStateChange(TransactionConnectionState state) {
+    setState(() {
+      _connectionState = state;
+    });
+  }
+
+  void _showTransactionConfirmedNotification(TransactionModel transaction) {
+    const androidDetails = AndroidNotificationDetails(
+      'transaction_confirmations',
+      'Transaction Confirmations',
+      channelDescription: 'Notifications for confirmed transactions',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const iosDetails = DarwinNotificationDetails();
+    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+
+    _notifications.show(
+      transaction.id.hashCode,
+      'Transaction Confirmed',
+      '${transaction.asset} ${transaction.amount} sent to ${_truncateAddress(transaction.destination)}',
+      details,
+      payload: transaction.id,
+    );
+  }
+
+  String _truncateAddress(String address) {
+    if (address.length <= 10) return address;
+    return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _streamService.onAppForeground();
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        _streamService.onAppBackground();
+        break;
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _transactionsSub?.cancel();
+    _connectionStateSub?.cancel();
+    _streamService.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final platform = Theme.of(context).platform;
     final sections = _buildSections();
@@ -153,6 +293,71 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('Ignition Pay'),
         centerTitle: true,
+        actions: [
+          _ConnectionStatusIndicator(state: _connectionState),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: _transactions.isEmpty
+          ? _buildEmptyState()
+          : _buildTransactionList(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/send'),
+        tooltip: 'Send Payment',
+        child: const Icon(Icons.send),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.receipt_long_outlined,
+            size: 80,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No transactions yet',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Your transaction history will appear here',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: () => context.push('/send'),
+            icon: const Icon(Icons.send),
+            label: const Text('Send Payment'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransactionList() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        // Trigger a manual poll
+        await _streamService.pollTransactions();
+      },
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: _transactions.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          final transaction = _transactions[index];
+          return _AnimatedTransactionTile(transaction: transaction);
+        },
       ),
       body: RefreshIndicator(
         onRefresh: () => _loadBalances(invalidate: true),
