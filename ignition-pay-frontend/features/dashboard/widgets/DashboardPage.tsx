@@ -5,8 +5,11 @@ import Link from 'next/link'
 import { Send, ArrowDownLeft, TrendingUp, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { WalletCard } from '@/components/wallet-card'
-import { PortfolioSummaryCard } from '@/components/portfolio-summary-card'
-import { TransactionRow } from '@/components/transaction-row'
+import {
+  PortfolioSummaryCard,
+  PortfolioSummaryCardSkeleton,
+} from '@/components/portfolio-summary-card'
+import { TransactionRow, TransactionRowSkeleton } from '@/components/transaction-row'
 import { PullToRefresh } from '@/components/pull-to-refresh'
 import { MASKED_AMOUNT, useHideBalances } from '@/hooks/use-hide-balances'
 import { InlineEmpty, InlineError, InlineSkeleton } from '@/components/inline-state'
@@ -14,9 +17,14 @@ import { groupAssets, portfolioChange24h, totalValue } from '@/features/dashboar
 import { useWalletBalances, useQuickStats } from '@/features/dashboard/state'
 import { fetchTransactions } from '@/features/history/services'
 import { useOptimisticTransactions } from '@/features/history/state'
-import type { Transaction, OptimisticTransaction } from '@/features/history/models'
+import {
+  mergeOptimisticTransactions,
+  type Transaction,
+  type OptimisticTransaction,
+} from '@/features/history/models'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useTranslation } from '@/lib/i18n'
+import { useMinimumLoading } from '@/hooks/use-minimum-loading'
 
 interface DashboardPageProps {
   address?: string
@@ -77,14 +85,25 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
     void loadRecentTransactions()
   }, [loadRecentTransactions])
 
-  const recentTransactions = useMemo<Array<Transaction | OptimisticTransaction>>(() => {
-    return [...optimisticEntries, ...realTransactions].slice(0, 5)
-  }, [optimisticEntries, realTransactions])
+  const recentTransactions = useMemo<Array<Transaction | OptimisticTransaction>>(
+    // #626 — a confirmed optimistic entry is dropped only once the server's copy
+    // of it arrives, so the row never disappears between the two.
+    () => mergeOptimisticTransactions(realTransactions, optimisticEntries).slice(0, 5),
+    [optimisticEntries, realTransactions],
+  )
 
   const handleRefresh = useCallback(() => {
     refresh()
     void loadRecentTransactions()
   }, [refresh, loadRecentTransactions])
+
+  // #625 — hold each skeleton for a minimum beat so a fast response does not
+  // flash placeholder content. The flags are also used to gate the real content,
+  // so a held skeleton and its data can never render at the same time.
+  const showBalancesSkeleton = useMinimumLoading(status === 'loading' && !snapshot)
+  const showTransactionsSkeleton = useMinimumLoading(
+    isTxLoading && recentTransactions.length === 0,
+  )
 
   const assets = useMemo(() => snapshot?.assets ?? [], [snapshot])
   const groups = useMemo(() => groupAssets(assets), [assets])
@@ -136,17 +155,9 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
       <PullToRefresh onRefresh={handleRefresh}>
         <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
           {/* Portfolio summary */}
-          {status === 'loading' && !snapshot && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="h-56 rounded-2xl border border-border bg-card animate-pulse"
-            >
-              <span className="sr-only">{t('dashboard.loadingBalances')}</span>
-            </div>
-          )}
+          {showBalancesSkeleton && <PortfolioSummaryCardSkeleton />}
 
-          {status === 'error' && !snapshot && (
+          {!showBalancesSkeleton && status === 'error' && !snapshot && (
             <InlineError
               title="Could not load your balances"
               message={error ?? 'Please try again in a moment.'}
@@ -154,7 +165,7 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
             />
           )}
 
-          {snapshot && (
+          {!showBalancesSkeleton && snapshot && (
             <>
               {status === 'error' && error && (
                 <InlineError
@@ -199,11 +210,11 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
               )}
             </div>
 
-            {status === 'loading' && !snapshot && (
+            {showBalancesSkeleton && (
               <InlineSkeleton count={6} label="Loading assets" />
             )}
 
-            {status === 'error' && !snapshot && (
+            {!showBalancesSkeleton && status === 'error' && !snapshot && (
               <InlineError
                 title="Assets unavailable"
                 message={error ?? 'We could not reach the wallet service.'}
@@ -211,7 +222,7 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
               />
             )}
 
-            {snapshot && assets.length === 0 && (
+            {!showBalancesSkeleton && snapshot && assets.length === 0 && (
               <InlineEmpty
                 title={t('dashboard.noAssetsTitle')}
                 description={t('dashboard.noAssetsDesc')}
@@ -226,7 +237,7 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
               />
             )}
 
-            {groups.length > 0 && (
+            {!showBalancesSkeleton && groups.length > 0 && (
               <div className="space-y-8">
                 {groups.map((group) => (
                   <section key={group.category} aria-labelledby={`asset-group-${group.category}`}>
@@ -272,11 +283,9 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
                 <Button variant="ghost">{t('dashboard.viewAll')}</Button>
               </Link>
             </div>
-            {isTxLoading && recentTransactions.length === 0 ? (
-              <div className="bg-card rounded-xl border border-border p-6 space-y-3 animate-pulse">
-                <div className="h-12 w-full rounded bg-muted" />
-                <div className="h-12 w-full rounded bg-muted" />
-                <div className="h-12 w-full rounded bg-muted" />
+            {showTransactionsSkeleton ? (
+              <div className="bg-card rounded-xl border border-border overflow-hidden">
+                <TransactionRowSkeleton count={3} />
               </div>
             ) : recentTransactions.length === 0 ? (
               <InlineEmpty

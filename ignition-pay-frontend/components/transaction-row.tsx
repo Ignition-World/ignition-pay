@@ -17,6 +17,14 @@ import { isOptimisticTransaction } from '@/features/history/models'
 // The row now navigates to a dedicated transaction detail page instead of opening an inline sheet.
 import { useTranslation } from '@/lib/i18n'
 
+/**
+ * Box-model classes shared by a transaction row and its skeleton (#625).
+ *
+ * Exported so a test can assert the placeholder occupies the same space as the
+ * row it stands in for.
+ */
+export const TRANSACTION_ROW_SHELL = 'flex items-center justify-between py-4 px-4 rounded-lg'
+
 interface TransactionRowProps {
   transaction: Transaction | OptimisticTransaction
 }
@@ -34,7 +42,9 @@ function TransactionStatusBadge({
   const { t } = useTranslation()
   const isOptimistic = isOptimisticTransaction(transaction)
 
-  if (isOptimistic) {
+  // A confirmed optimistic entry falls through to the normal status badge, so
+  // the user sees Pending become Confirmed on the same row.
+  if (isOptimistic && transaction.status === 'pending') {
     return (
       <span
         className="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-500 inline-flex items-center gap-1 font-medium"
@@ -110,7 +120,7 @@ export function TransactionRow({ transaction }: TransactionRowProps) {
   return (
     <Link
       href={isOptimistic ? '#' : `/transactions/${txId}`}
-      className={`flex items-center justify-between py-4 px-4 rounded-lg transition-colors border ${
+      className={`${TRANSACTION_ROW_SHELL} transition-colors border ${
         isOptimistic
           ? 'bg-yellow-500/5 border-yellow-500/30 hover:bg-yellow-500/10'
           : 'border-transparent hover:bg-muted/50 hover:border-border'
@@ -145,5 +155,46 @@ export function TransactionRow({ transaction }: TransactionRowProps) {
         <TransactionStatusBadge transaction={transaction} />
       </div>
     </Link>
+  )
+}
+
+/**
+ * Loading placeholder for {@link TransactionRow} (#625).
+ *
+ * Mirrors the row's box model exactly — `py-4 px-4`, the `w-12 h-12` avatar, the
+ * two-line left column and the three-line right column — so a list of skeletons
+ * occupies the same height as the list that replaces it.
+ *
+ * @param props - `count` is how many placeholder rows to draw.
+ * @returns A non-interactive list of placeholder rows.
+ */
+export function TransactionRowSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <div role="status" aria-live="polite">
+      <span className="sr-only">Loading transactions</span>
+
+      <div className="divide-y divide-border" aria-hidden="true">
+        {Array.from({ length: count }, (_, index) => (
+          <div
+            key={index}
+            className={`${TRANSACTION_ROW_SHELL} border border-transparent animate-pulse`}
+          >
+            <div className="flex items-center gap-4 flex-1">
+              <div className="w-12 h-12 rounded-full bg-muted" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="h-6 w-32 rounded bg-muted" />
+                <div className="h-5 w-40 rounded bg-muted" />
+              </div>
+            </div>
+
+            <div className="flex flex-col items-end gap-1">
+              <div className="h-6 w-28 rounded bg-muted" />
+              <div className="h-4 w-20 rounded bg-muted" />
+              <div className="h-6 w-20 rounded-full bg-muted" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

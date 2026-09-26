@@ -1,0 +1,148 @@
+name: Load test
+
+# Issue #624 — runs the k6 suite against staging and fails when a performance
+# budget is breached.
+#
+# Nightly and on demand only.
+#
+# Deliberately not on pull requests: a load test needs an environment that is not
+# being redeployed underneath it, and 500 concurrent users against shared staging
+# on every PR would make both the numbers meaningless and the environment
+# unusable. Deliberately not on push to main either, since a push is not a
+# deploy — running before staging has the new code would measure the old one. Add
+# a `workflow_run` trigger on the deploy workflow once one exists.
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Load profile
+        required: true
+        default: normal
+        type: choice
+        options: [baseline, normal, peak]
+      allow_writes:
+        description: Include the send-transaction scenario (submits payments)
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # 03:00 UTC, when staging is quiet.
+    - cron: '0 3 * * *'
+
+concurrency:
+  # Two load tests at once measure each other.
+  group: load-test-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  load-test:
+    name: k6 (${{ inputs.profile || 'normal' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Budgets are checked against staging, so the URL and credentials come from
+    # the environment rather than from the workflow file.
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          curl -fsSL https://dl.k6.io/key.gpg \
+            | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+          k6 version
+
+      # Cheap and fast: if the budget arithmetic is broken there is no point
+      # generating load against staging for half an hour to find out.
+      - name: Verify the load suite itself
+        run: node --test tests/performance/lib/lib.test.mjs tests/performance/lib/lib.peak.test.mjs
+
+      - name: Check the target is configured
+        env:
+          LOAD_TEST_BASE_URL: ${{ secrets.LOAD_TEST_BASE_URL }}
+        run: |
+          if [ -z "$LOAD_TEST_BASE_URL" ]; then
+            echo "::error::LOAD_TEST_BASE_URL is not set for the staging environment."
+            echo "Set it, plus LOAD_TEST_TOKEN, LOAD_TEST_API_KEY and LOAD_TEST_WALLET_ID," \
+                 "as environment secrets. Without them this job would report a green run" \
+                 "that measured nothing."
+            exit 1
+          fi
+
+      # Read-only scenarios. Each is a separate k6 process so one breached budget
+      # does not hide the others; `continue-on-error` lets them all report before
+      # the gate step decides the outcome.
+      - name: Run read scenarios
+        id: reads
+        continue-on-error: true
+        env:
+          LOAD_TEST_BASE_URL: ${{ secrets.LOAD_TEST_BASE_URL }}
+          LOAD_TEST_API_PREFIX: ${{ secrets.LOAD_TEST_API_PREFIX }}
+          LOAD_TEST_TOKEN: ${{ secrets.LOAD_TEST_TOKEN }}
+          LOAD_TEST_API_KEY: ${{ secrets.LOAD_TEST_API_KEY }}
+          LOAD_TEST_WALLET_ID: ${{ secrets.LOAD_TEST_WALLET_ID }}
+          LOAD_TEST_PROFILE: ${{ inputs.profile || 'normal' }}
+        run: |
+          status=0
+          for scenario in login dashboard receive transaction-history; do
+            echo "::group::$scenario"
+            k6 run "tests/performance/scenarios/$scenario.js" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+
+      - name: Run send-transaction scenario
+        id: writes
+        if: ${{ inputs.allow_writes == true }}
+        continue-on-error: true
+        env:
+          LOAD_TEST_BASE_URL: ${{ secrets.LOAD_TEST_BASE_URL }}
+          LOAD_TEST_API_PREFIX: ${{ secrets.LOAD_TEST_API_PREFIX }}
+          LOAD_TEST_TOKEN: ${{ secrets.LOAD_TEST_TOKEN }}
+          LOAD_TEST_WALLET_ID: ${{ secrets.LOAD_TEST_WALLET_ID }}
+          LOAD_TEST_PROFILE: ${{ inputs.profile || 'normal' }}
+          LOAD_TEST_ALLOW_WRITES: 'true'
+        run: k6 run tests/performance/scenarios/send-transaction.js
+
+      - name: Publish results to the job summary
+        if: always()
+        run: |
+          if ! ls tests/performance/results/*.md >/dev/null 2>&1; then
+            echo "No result files were produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## Load test — ${{ inputs.profile || 'normal' }}"
+            echo
+            cat tests/performance/results/*.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results-${{ inputs.profile || 'normal' }}-${{ github.run_id }}
+          path: tests/performance/results/
+          if-no-files-found: warn
+
+      # The gate. k6 exits non-zero when a threshold is breached, so this turns a
+      # breached budget into a failed build after every scenario has reported.
+      - name: Fail if a performance budget was breached
+        if: always()
+        run: |
+          reads='${{ steps.reads.outcome }}'
+          writes='${{ steps.writes.outcome }}'
+
+          echo "read scenarios: $reads"
+          echo "send-transaction: ${writes:-skipped}"
+
+          if [ "$reads" = 'failure' ] || [ "$writes" = 'failure' ]; then
+            echo "::error::A performance budget was breached. See the job summary for the p95 and error rate per scenario."
+            exit 1
+          fi
