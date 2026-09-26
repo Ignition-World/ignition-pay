@@ -11,6 +11,8 @@
     "version:minor": "node scripts/version-bump.mjs minor",
     "version:major": "node scripts/version-bump.mjs major",
     "test:version": "node --test scripts/version-utils.test.mjs",
+    "docs:components": "node scripts/generate-component-docs.mjs",
+    "docs:components:check": "node scripts/generate-component-docs.mjs --check",
     "test:a11y": "vitest run tests/accessibility.test.tsx",
     "test": "npm run test:version && npm run test:a11y",
     "lint:fix": "eslint . --fix",

@@ -8,6 +8,7 @@ vi.mock('@/lib/stellar/strkey', () => ({
     isValid: addr.startsWith('G') && addr.length > 50,
     kind: 'publicKey' as const,
   })),
+  truncateAddress: (address: string) => address,
 }))
 
 vi.mock('@/lib/stellar/memo', () => ({

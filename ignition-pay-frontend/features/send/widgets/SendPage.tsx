@@ -16,6 +16,7 @@ import {
   type MemoType,
 } from '@/lib/stellar/memo'
 import { AssetAmountPicker } from '@/components/asset-amount-picker'
+import { EmptyState } from '@/components/empty-state'
 import { validateAmount, type SendableAsset, type NetworkFeeEstimate } from '@/features/send/models'
 import { checkTrustline, estimateTransactionFee, type TrustlineCheck } from '@/features/send/services'
 import { useOptimisticTransactions } from '@/features/history/state'
@@ -352,6 +353,17 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
             3
           </div>
         </div>
+
+        {/* Onboarding for new users with no saved or recent recipients */}
+        {step === 'form' && contacts.length === 0 && recents.length === 0 && (
+          <EmptyState
+            illustration="send"
+            title="New to sending payments?"
+            description="You haven't saved any recipients yet. Paste a Stellar address below to send XLM, USDC, or other assets — payments settle in seconds."
+            action={{ label: 'Receive assets first', href: '/receive' }}
+            className="mb-6"
+          />
+        )}
 
         {/* Form Step */}
         {step === 'form' && (
