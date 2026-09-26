@@ -121,7 +121,16 @@ export class AuthVerifyController {
   }
 
   @Post('verify')
-  @ApiOperation({ summary: 'Verify signature and issue JWT token' })
+  @ApiOperation({
+    summary: 'Verify signature and issue JWT token',
+    description:
+      'Second step of the SEP-10 wallet login flow: GET /auth/challenge issues the challenge ' +
+      'text, the wallet signs it, and this endpoint verifies the Ed25519 signature, upserts the ' +
+      'user, opens a tracked session and returns the token pair. ' +
+      'Send `accessToken` as an `Authorization: Bearer` header to the account and API-key ' +
+      'management routes (for example POST /api-keys). Send `refreshToken` to POST /auth/refresh ' +
+      'for a new pair, and POST /auth/logout to revoke the session and the refresh token.',
+  })
   @ApiResponse({
     status: 201,
     description: 'Successful login',
