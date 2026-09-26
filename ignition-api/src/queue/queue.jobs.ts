@@ -96,3 +96,16 @@ export interface DashboardInvalidatePayload {
   /** Internal User.id (UUID) */
   userId: string;
 }
+// ---------------------------------------------------------------------------
+// GDPR data export — Issue #619
+// ---------------------------------------------------------------------------
+
+/** Job name: build a gzipped, HMAC-signed JSON export for a single user */
+export const DATA_EXPORT_JOB_GENERATE = 'generate-data-export';
+
+export interface DataExportPayload {
+  /** Internal User.id (UUID) whose data is being exported */
+  userId: string;
+  /** User id of the requester (self or admin) — recorded in the audit log */
+  requestedBy: string;
+}

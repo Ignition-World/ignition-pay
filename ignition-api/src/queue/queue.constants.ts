@@ -4,3 +4,4 @@ export const QUEUE_ANALYTICS = 'analytics';
 export const QUEUE_PAYMENTS = 'payments';
 export const QUEUE_HORIZON = 'horizon';
 export const QUEUE_DASHBOARD = 'dashboard';
+export const QUEUE_DATA_EXPORT = 'data-export';
