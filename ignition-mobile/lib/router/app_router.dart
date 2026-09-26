@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../features/home/pages/home_page.dart';
+import '../core/routing/deep_link.dart';
 import '../core/security/secure_screen_wrapper.dart';
+import '../features/auth/services/biometric_services.dart';
+import '../features/home/pages/home_page.dart';
+import '../features/send/pages/pending_sends_page.dart';
 import '../features/send/payment_review_page.dart';
+import '../features/send/services/draft_services.dart';
+import '../features/settings/pages/security_settings_page.dart';
 
-String deepLinkLocation(Uri uri) {
-  final path = uri.scheme == 'ignitionpay' && uri.host.isNotEmpty
-      ? '/${uri.host}${uri.path}'
-      : uri.path;
-  return Uri(path: path, queryParameters: uri.queryParameters).toString();
-}
+/// Maps an inbound `ignitionpay://` / universal-link URI onto an in-app
+/// location. Malformed or unsupported links resolve to the home route so the
+/// app never strands the user on the router's error page.
+String deepLinkLocation(Uri uri) => DeepLinkResolver.locationFor(uri);
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
@@ -48,6 +51,7 @@ final GoRouter appRouter = GoRouter(
     ),
     // Deep link: ignitionpay://pay/GABCD123?amount=10&asset=USDC
     // or:        https://ignitionpay.com/pay/GABCD123?amount=10&asset=USDC
+    // Both schemes are normalised by [DeepLinkResolver] before reaching here.
     GoRoute(
       path: '/pay/:address',
       name: 'pay',
@@ -65,6 +69,21 @@ final GoRouter appRouter = GoRouter(
           ),
         );
       },
+    ),
+    GoRoute(
+      path: '/pending-sends',
+      name: 'pendingSends',
+      builder: (context, state) => PendingSendsPage(
+        store: DraftServices.store,
+        syncService: DraftServices.syncService,
+      ),
+    ),
+    GoRoute(
+      path: '/settings/security',
+      name: 'securitySettings',
+      builder: (context, state) => SecuritySettingsPage(
+        biometricService: BiometricServices.service,
+      ),
     ),
     GoRoute(
       path: '/transaction/:id',
