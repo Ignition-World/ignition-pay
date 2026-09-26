@@ -8,6 +8,8 @@ import 'core/monitoring_service.dart';
 import 'core/network/api_client.dart';
 import 'core/network/connectivity_service.dart';
 import 'core/push_notification_service.dart';
+import 'features/notifications/services/notification_center_service.dart';
+import 'features/notifications/services/notification_tap_coordinator.dart';
 import 'features/send/services/draft_services.dart';
 import 'features/send/services/draft_sync_service.dart';
 
@@ -27,7 +29,14 @@ Future<void> main() async {
     runApp: () async {
       // Services that depend on Firebase being ready go here.
       ApiClient().initialize();
-      await PushNotificationService().init();
+
+      // Store a tapped notification locally before navigating to it (#683).
+      final pushNotifications = PushNotificationService();
+      pushNotifications.tapHandler = NotificationTapCoordinator(
+        service: NotificationCenterService.instance,
+        navigate: appRouter.go,
+      ).handleTap;
+      await pushNotifications.init();
 
       // Flush any offline send drafts as soon as connectivity returns (#678).
       final draftSyncService = DraftSyncService(

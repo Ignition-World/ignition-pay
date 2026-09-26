@@ -1,27 +1,23 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 
+/// Callback invoked when the user taps a delivered push notification.
+///
+/// Wired in `main.dart` to the notification tap coordinator, which stores the
+/// notification locally before navigating to the screen it points at (#683).
+typedef PushNotificationTapHandler = Future<void> Function(
+  RemoteMessage message,
+);
+
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint("Handling a background message: ${message.messageId}");
-}
-
-void _handleRemoteMessageTap(RemoteMessage message) {
-  debugPrint("Notification tapped with payload: ${message.data}");
-  // Route user based on message.data here in the future.
-}
-
-void _handleLocalNotificationResponse(NotificationResponse response) {
-  final payload = response.payload;
-  if (payload != null) {
-    debugPrint("Local notification tapped with payload: $payload");
-    // Route user based on payload here in the future.
-  }
 }
 
 class PushNotificationService {
@@ -40,6 +36,10 @@ class PushNotificationService {
   Future<void>? _initializing;
   Future<void>? _disposing;
   bool _isInitialized = false;
+
+  /// Handler for notification taps. Null until `main.dart` wires it, in which
+  /// case taps are only logged.
+  PushNotificationTapHandler? tapHandler;
 
   @visibleForTesting
   int get activeListenerCount =>
@@ -180,9 +180,52 @@ class PushNotificationService {
             icon: '@mipmap/ic_launcher',
           ),
         ),
-        payload: message.data.toString(),
+        payload: jsonEncode(message.data),
       ),
     );
+  }
+
+  void _handleRemoteMessageTap(RemoteMessage message) {
+    debugPrint("Notification tapped with payload: ${message.data}");
+    _dispatchTap(message);
+  }
+
+  void _handleLocalNotificationResponse(NotificationResponse response) {
+    final payload = response.payload;
+    if (payload == null) return;
+
+    debugPrint("Local notification tapped with payload: $payload");
+    final data = decodeTrayPayload(payload);
+    if (data == null) return;
+
+    _dispatchTap(RemoteMessage(data: data));
+  }
+
+  /// Forwards a tap to [tapHandler]. Handler failures are logged rather than
+  /// thrown so a broken navigation can never take the message stream down.
+  void _dispatchTap(RemoteMessage message) {
+    final handler = tapHandler;
+    if (handler == null) return;
+
+    unawaited(() async {
+      try {
+        await handler(message);
+      } catch (error) {
+        debugPrint("Notification tap handling failed: $error");
+      }
+    }());
+  }
+
+  /// Decodes the JSON payload attached to a tray notification. Returns null
+  /// for a payload that is not a JSON object.
+  @visibleForTesting
+  static Map<String, dynamic>? decodeTrayPayload(String payload) {
+    try {
+      final decoded = jsonDecode(payload);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } on FormatException {
+      return null;
+    }
   }
 
   Future<void> requestPermission() async {

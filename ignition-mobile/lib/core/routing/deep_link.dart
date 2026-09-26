@@ -45,6 +45,7 @@ class DeepLinkResolver {
     'send',
     'receive',
     'transaction',
+    'notifications',
   };
 
   /// Where unsupported links land.
