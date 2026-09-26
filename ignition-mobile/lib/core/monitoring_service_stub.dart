@@ -12,12 +12,9 @@ class MonitoringService {
 
   /// Initialises monitoring.
   ///
-  /// The optional [runApp] callback is accepted for API-signature parity
-  /// with the Flutter implementation; on the Dart VM it is simply invoked
-  /// directly (no Sentry/Crashlytics wrapping).
-  static Future<void> init({Future<void> Function()? runApp}) async {
-    await runApp?.call();
-  }
+  /// Accepted for API-signature parity with the Flutter implementation; on the
+  /// Dart VM it is a no-op (no Sentry/Crashlytics, no frames to track).
+  static Future<void> initAfterFirstFrame() async {}
 
   /// Records an error to the monitoring backend.
   ///
