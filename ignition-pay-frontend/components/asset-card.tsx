@@ -1,14 +1,26 @@
 'use client'
 
+import { Badge } from '@/components/ui/badge'
+import { MASKED_AMOUNT } from '@/hooks/use-hide-balances'
+
 interface AssetCardProps {
   code: string
   issuer: string
   balance: number
   value: number
   change24h?: number
+  /** When true, amounts are masked for privacy. */
+  hideAmounts?: boolean
 }
 
-export function AssetCard({ code, issuer, balance, value, change24h }: AssetCardProps) {
+export function AssetCard({
+  code,
+  issuer,
+  balance,
+  value,
+  change24h,
+  hideAmounts = false,
+}: AssetCardProps) {
   const displayIssuer = issuer.slice(0, 6) + '...' + issuer.slice(-4)
   const isPositive = (change24h ?? 0) >= 0
 
@@ -27,20 +39,29 @@ export function AssetCard({ code, issuer, balance, value, change24h }: AssetCard
           </div>
         </div>
         {change24h !== undefined && (
-          <div className={`text-sm font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-            {isPositive ? '+' : ''}{change24h.toFixed(2)}%
-          </div>
+          <Badge
+            variant={isPositive ? 'success' : 'destructive'}
+            className="text-sm font-semibold border-transparent bg-transparent px-0 py-0"
+            aria-label={`24 hour change ${isPositive ? 'up' : 'down'} ${Math.abs(change24h).toFixed(2)} percent`}
+          >
+            {isPositive ? '+' : ''}
+            {change24h.toFixed(2)}%
+          </Badge>
         )}
       </div>
 
       <div className="mt-4 flex items-end justify-between">
         <div>
           <p className="text-xs text-muted-foreground">Balance</p>
-          <p className="text-xl font-bold text-foreground">{balance.toFixed(4)}</p>
+          <p className="text-xl font-bold text-foreground">
+            {hideAmounts ? MASKED_AMOUNT : balance.toFixed(4)}
+          </p>
         </div>
         <div className="text-right">
           <p className="text-xs text-muted-foreground">Value</p>
-          <p className="text-xl font-bold text-primary">${value.toFixed(2)}</p>
+          <p className="text-xl font-bold text-primary">
+            {hideAmounts ? MASKED_AMOUNT : `$${value.toFixed(2)}`}
+          </p>
         </div>
       </div>
     </div>

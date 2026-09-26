@@ -1,0 +1,35 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build the release IPA"
+  lane :build do
+    sh("cd .. && flutter build ipa --release")
+  end
+
+  desc "Upload metadata + screenshots only (no binary) to App Store Connect"
+  lane :metadata do
+    deliver(
+      skip_binary_upload: true,
+      skip_screenshots: false,
+      force: true,
+    )
+  end
+
+  desc "Build and upload a build to TestFlight"
+  lane :beta do
+    build
+    upload_to_testflight(
+      ipa: "../build/ios/ipa/ignition_mobile.ipa",
+      skip_waiting_for_build_processing: true,
+    )
+  end
+
+  desc "Submit the current build for App Store review"
+  lane :release do
+    deliver(
+      submit_for_review: true,
+      automatic_release: false,
+      force: true,
+    )
+  end
+end

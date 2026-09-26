@@ -1,12 +1,28 @@
+import { useState } from 'react'
 import { AddressInput } from '../../../src/AddressInput'
 import './App.css'
 
 function App() {
+  const [address, setAddress] = useState('')
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      setAddress(text)
+    } catch (err) {
+      console.error('Failed to paste from clipboard:', err)\n    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
       <div style={{ padding: '2rem', background: 'white', borderRadius: '1rem', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)', width: '100%', maxWidth: '400px' }}>
         <h1 style={{ textAlign: 'center', marginBottom: '1.5rem', color: '#1e293b' }}>Stellar Address Kit</h1>
-        <AddressInput />
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <AddressInput value={address} onChange={(e) => setAddress(e.target.value)} />
+          <button onClick={handlePaste} style={{ padding: '0.5rem 1rem', background: '#2563eb', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}>
+            Paste
+          </button>
+        </div>
       </div>
     </div>
   )

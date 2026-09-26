@@ -1,0 +1,4 @@
+packages:
+  - "packages/*"
+  - "ignition-api"
+  - "ignition-pay-frontend"

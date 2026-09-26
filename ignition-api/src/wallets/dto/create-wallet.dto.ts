@@ -7,6 +7,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { WalletType } from '@prisma/client';
 
 export enum WalletNetwork {
   STELLAR = 'STELLAR',
@@ -19,6 +20,16 @@ export class CreateWalletDto {
   @IsEnum(WalletNetwork)
   @IsOptional()
   network?: WalletNetwork = WalletNetwork.STELLAR;
+
+  @ApiPropertyOptional({
+    enum: WalletType,
+    default: WalletType.CUSTODIAL,
+    description:
+      'CUSTODIAL wallets have keys managed server-side; NON_CUSTODIAL wallets only store a public deposit address (user controls keys).',
+  })
+  @IsEnum(WalletType)
+  @IsOptional()
+  walletType?: WalletType = WalletType.CUSTODIAL;
 
   @ApiPropertyOptional({
     description: 'Deposit address to assign to this wallet',

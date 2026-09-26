@@ -1,4 +1,5 @@
 import { ErrorCode, Warning, WarningCode } from "../address/types";
+import { RoutingFlags } from "./flags";
 
 export type RoutingSource = "muxed" | "memo" | "none";
 
@@ -7,6 +8,8 @@ export type RoutingInput = {
   memoType: string;
   memoValue: string | null;
   sourceAccount: string | null;
+  /** Optional feature flags to control routing behaviour for this call. */
+  flags?: RoutingFlags;
 };
 
 export type KnownMemoType = "none" | "id" | "text" | "hash" | "return";

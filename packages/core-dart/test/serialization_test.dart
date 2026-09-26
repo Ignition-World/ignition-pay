@@ -17,12 +17,14 @@ void main() {
     });
 
     test('round-trip M address', () {
-      const mAddr = 'MAYCUYT553C5LHVE2XPW5GMEJT4BXGM7AHMJWLAPZP53KJO7EIQACAAAAAAAAAAAAD672';
+      const mAddr =
+          'MAYCUYT553C5LHVE2XPW5GMEJT4BXGM7AHMJWLAPZP53KJO7EIQACAAAAAAAAAAAAD672';
       final parsed = StellarAddress.parse(mAddr);
       final json = parsed.toJson();
       expect(json['kind'], 'm');
       expect(json['raw'], mAddr);
-      expect(json['baseG'], 'GAYCUYT553C5LHVE2XPW5GMEJT4BXGM7AHMJWLAPZP53KJO7EIQADRSI');
+      expect(json['baseG'],
+          'GAYCUYT553C5LHVE2XPW5GMEJT4BXGM7AHMJWLAPZP53KJO7EIQADRSI');
       expect(json['muxedId'], '0');
       final restored = StellarAddress.fromJson(json);
       expect(restored, parsed);
@@ -86,23 +88,30 @@ void main() {
       expect(restored.destinationBaseAccount, result.destinationBaseAccount);
     });
 
-    test('memo source round-trip with warnings', () {
+    test('memo source round-trip with warnings and memo fields', () {
       final result = RoutingResult(
         source: RoutingSource.memo,
         id: BigInt.from(100),
+        memoType: 'id',
+        memoValue: '100',
         warnings: [
-          const RoutingWarning(code: 'test', severity: 'warn', message: 'Test warning'),
+          const RoutingWarning(
+              code: 'test', severity: 'warn', message: 'Test warning'),
         ],
       );
       final json = result.toJson();
       expect(json['source'], 'memo');
       expect(json['id'], '100');
+      expect(json['memoType'], 'id');
+      expect(json['memoValue'], '100');
       expect(json['warnings'], hasLength(1));
       expect(json['warnings'][0]['code'], 'test');
 
       final restored = RoutingResult.fromJson(json);
       expect(restored.source, result.source);
       expect(restored.id, result.id);
+      expect(restored.memoType, result.memoType);
+      expect(restored.memoValue, result.memoValue);
       expect(restored.warnings, hasLength(1));
       expect(restored.warnings.first.code, 'test');
     });
@@ -174,7 +183,8 @@ void main() {
 
   group('RoutingWarning serialization', () {
     test('round-trip', () {
-      final warning = RoutingWarning(code: 'test', severity: 'info', message: 'Test');
+      final warning =
+          const RoutingWarning(code: 'test', severity: 'info', message: 'Test');
       final json = warning.toJson();
       final restored = RoutingWarning.fromJson(json);
       expect(restored, warning);
@@ -188,7 +198,8 @@ void main() {
 
   group('DestinationError serialization', () {
     test('round-trip', () {
-      final error = DestinationError(code: 'ERR', message: 'Something went wrong');
+      final error =
+          DestinationError(code: 'ERR', message: 'Something went wrong');
       final json = error.toJson();
       expect(json['code'], 'ERR');
       expect(json['message'], 'Something went wrong');

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -20,6 +21,8 @@ import { RegisterResponseDto } from './dto/register-response.dto';
 import { SessionService } from '../session/session.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserProfileDto, PublicUserProfileDto } from './dto/user-profile.dto';
+import { UserDashboardDto } from './dto/dashboard.dto';
+import { DashboardCacheService } from './dashboard-cache.service';
 import { assertStrongPassword } from './password-policy';
 
 interface PasswordSetupInput {
@@ -60,6 +63,7 @@ export class UsersService {
     private readonly config: ConfigService,
     @Inject(CACHE_MANAGER) private readonly cache: Keyv,
     private readonly sessionService: SessionService,
+    private readonly dashboardCache: DashboardCacheService,
   ) {}
 
   /**
@@ -68,14 +72,6 @@ export class UsersService {
   async getMyProfile(walletAddress: string): Promise<UserProfileDto> {
     const user = await this.prisma.user.findFirst({
       where: { walletAddress, deletedAt: null },
-      include: {
-        campaigns: {
-          where: { status: 'ACTIVE' },
-        },
-        donations: true,
-      },
-    const user = await this.prisma.user.findUnique({
-      where: { walletAddress },
       include: userProfileInclude,
     });
 
@@ -95,7 +91,7 @@ export class UsersService {
 
     return {
       id: user.id,
-      email: user.email,
+      email: user.email ?? undefined,
       displayName: user.displayName || undefined,
       name: user.name || undefined,
       phone: user.phone || undefined,
@@ -110,6 +106,115 @@ export class UsersService {
       totalRaised,
       totalDonated,
       campaignCount: user.campaigns.length,
+    };
+  }
+
+  /**
+   * Get authenticated user's dashboard: profile, wallets, recent
+   * transactions, unread notifications and active campaigns in a single
+   * $transaction with parallel, selectively-projected queries instead of
+   * six sequential round trips.
+   *
+   * Issue #591 — the aggregated payload is served from the warmed cache when
+   * available. On a cache miss (cold start, eviction, invalidation) we fall
+   * back to live computation and repopulate the cache, so there is no
+   * downtime and no user-visible error.
+   */
+  async getDashboard(walletAddress: string): Promise<UserDashboardDto> {
+    const user = await this.prisma.user.findFirst({
+      where: { walletAddress, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const cached = await this.dashboardCache.get(user.id);
+    if (cached) {
+      return cached;
+    }
+
+    const dashboard = await this.computeDashboard(user.id);
+    await this.dashboardCache.set(user.id, dashboard);
+    return dashboard;
+  }
+
+  /**
+   * Live dashboard computation used on cache miss and by the scheduled
+   * cache-warming job.
+   */
+  async computeDashboard(userId: string): Promise<UserDashboardDto> {
+    const [profile, wallets, recentTransactions, unreadNotifications, activeCampaigns] =
+      await this.prisma.$transaction([
+        this.prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            avatarUrl: true,
+            role: true,
+            kycStatus: true,
+          },
+        }),
+        this.prisma.wallet.findMany({
+          where: { userId, deletedAt: null },
+          select: { id: true, network: true, balance: true, currency: true, status: true },
+        }),
+        this.prisma.transaction.findMany({
+          where: {
+            OR: [
+              { fromWallet: { userId } },
+              { toWallet: { userId } },
+            ],
+          },
+          select: { id: true, amount: true, assetCode: true, status: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        this.prisma.notification.findMany({
+          where: { userId, isRead: false },
+          select: { id: true, type: true, title: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        this.prisma.campaign.findMany({
+          where: { creatorId: userId, status: 'ACTIVE' },
+          select: { id: true, title: true, goalAmount: true, raisedAmount: true },
+        }),
+      ]);
+
+    return {
+      profile: {
+        id: profile.id,
+        email: profile.email ?? undefined,
+        displayName: profile.displayName ?? undefined,
+        avatarUrl: profile.avatarUrl ?? undefined,
+        role: profile.role,
+        kycStatus: profile.kycStatus,
+      },
+      wallets: wallets.map((w) => ({
+        id: w.id,
+        network: w.network,
+        balance: w.balance.toString(),
+        currency: w.currency,
+        status: w.status,
+      })),
+      recentTransactions: recentTransactions.map((t) => ({
+        id: t.id,
+        amount: t.amount.toString(),
+        assetCode: t.assetCode,
+        status: t.status,
+        createdAt: t.createdAt,
+      })),
+      unreadNotifications,
+      activeCampaigns: activeCampaigns.map((c) => ({
+        id: c.id,
+        title: c.title,
+        goalAmount: c.goalAmount.toString(),
+        raisedAmount: c.raisedAmount.toString(),
+      })),
     };
   }
 
@@ -130,7 +235,11 @@ export class UsersService {
 
     if (updateDto.email && updateDto.email !== user.email) {
       const existing = await this.prisma.user.findUnique({
-        where: { email: updateDto.email },
+        where: {
+          email: updateDto.email,
+          deletedAt: null,
+          NOT: { id: user.id },
+        },
       });
       if (existing) {
         throw new BadRequestException('Email already in use');
@@ -156,6 +265,19 @@ export class UsersService {
       }
     }
 
+    if (updateDto.notificationPreferences) {
+      try {
+        const notifPrefs = JSON.parse(updateDto.notificationPreferences);
+        const existingPrefs = (updateData.preferences ?? {}) as Record<string, unknown>;
+        updateData.preferences = {
+          ...existingPrefs,
+          notifications: notifPrefs,
+        } as Prisma.InputJsonValue;
+      } catch {
+        throw new BadRequestException('Invalid notificationPreferences JSON');
+      }
+    }
+
     if (updateDto.socialLinks) {
       try {
         updateData.socialLinks = JSON.parse(
@@ -168,25 +290,6 @@ export class UsersService {
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
-      data: {
-        email: updateDto.email ?? user.email,
-        name: updateDto.name ?? user.name,
-        phone: updateDto.phone ?? user.phone,
-        preferences: parsedPreferences as Prisma.InputJsonValue,
-        displayName: updateDto.displayName ?? user.displayName,
-        bio: updateDto.bio ?? user.bio,
-        avatarUrl: updateDto.avatarUrl ?? user.avatarUrl,
-        socialLinks: (updateDto.socialLinks ?? user.socialLinks) as any,
-      },
-      include: {
-        campaigns: {
-          where: { status: 'ACTIVE' },
-        },
-        donations: true,
-      },
-    }) as Prisma.UserGetPayload<{
-      include: { campaigns: true; donations: true };
-    }>;
       data: updateData,
       include: userProfileInclude,
     });
@@ -203,7 +306,7 @@ export class UsersService {
 
     return {
       id: updated.id,
-      email: updated.email,
+      email: updated.email ?? undefined,
       displayName: updated.displayName || undefined,
       name: updated.name || undefined,
       phone: updated.phone || undefined,
@@ -224,9 +327,7 @@ export class UsersService {
   /**
    * Get public profile for a user by wallet address
    */
-  async getPublicProfile(
-    walletAddress: string,
-  ): Promise<PublicUserProfileDto> {
+  async getPublicProfile(walletAddress: string): Promise<PublicUserProfileDto> {
     const user = await this.prisma.user.findFirst({
       where: { walletAddress, deletedAt: null },
       include: {
@@ -265,6 +366,8 @@ export class UsersService {
     status: 'VERIFIED' | 'REJECTED' | 'PENDING',
     adminId: string,
   ): Promise<{ success: boolean; message: string }> {
+    await this.verifyAdminRole(adminId);
+
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
     });
@@ -300,6 +403,12 @@ export class UsersService {
 
   /**
    * Login with email + password, returning JWT access and refresh tokens.
+   *
+   * Implements the account-lockout flow (Issue #232): after
+   * `LOGIN_MAX_ATTEMPTS` consecutive failures, the account is locked
+   * for `LOGIN_LOCKOUT_SECONDS` seconds, and subsequent logins are
+   * rejected with a structured `UnauthorizedException` that surfaces
+   * `retryAfterSeconds` so clients can show a clear unlock countdown.
    */
   async login(email: string, password: string): Promise<LoginResponseDto> {
     const maxAttempts = this.config.get<number>('LOGIN_MAX_ATTEMPTS', 5);
@@ -320,9 +429,10 @@ export class UsersService {
       const retryAfter = Math.ceil(
         (user.lockedUntil.getTime() - Date.now()) / 1000,
       );
-      throw new UnauthorizedException(
-        `Account locked. Try again in ${retryAfter}s`,
-      );
+      throw new UnauthorizedException({
+        message: `Account locked. Try again in ${retryAfter}s`,
+        retryAfterSeconds: Math.max(retryAfter, 1),
+      });
     }
 
     if (!user.passwordHash) {
@@ -333,10 +443,10 @@ export class UsersService {
 
     if (!valid) {
       const attempts = user.loginAttempts + 1;
-      const lockedUntil =
-        attempts >= maxAttempts
-          ? new Date(Date.now() + lockoutSeconds * 1000)
-          : null;
+      const reachedThreshold = attempts >= maxAttempts;
+      const lockedUntil = reachedThreshold
+        ? new Date(Date.now() + lockoutSeconds * 1000)
+        : null;
 
       await this.prisma.user.update({
         where: { id: user.id },
@@ -354,11 +464,14 @@ export class UsersService {
     // Create a tracked session in Redis
     const session = await this.sessionService.createSession({
       userId: user.id,
-      walletAddress: user.walletAddress,
+      walletAddress: user.walletAddress ?? '',
       role: user.role,
     });
 
-    const accessTtlSeconds = this.config.get<number>('SESSION_ACCESS_TTL_SECONDS', 900);
+    const accessTtlSeconds = this.config.get<number>(
+      'SESSION_ACCESS_TTL_SECONDS',
+      900,
+    );
 
     const accessToken = this.jwt.sign(
       {
@@ -369,20 +482,20 @@ export class UsersService {
         sid: session.sessionId,
       },
       {
-        secret: this.config.get<string>('JWT_SECRET', 'stellaraid-default-secret'),
+        secret: this.config.getOrThrow<string>('JWT_SECRET'),
         expiresIn: `${accessTtlSeconds}s`,
       },
     );
 
-    const sessionTtlSeconds = this.config.get<number>('SESSION_TTL_SECONDS', 604800);
+    const sessionTtlSeconds = this.config.get<number>(
+      'SESSION_TTL_SECONDS',
+      604800,
+    );
 
     const refreshToken = this.jwt.sign(
       { sub: user.id, sid: session.sessionId },
       {
-        secret: this.config.get<string>(
-          'REFRESH_TOKEN_SECRET',
-          'default-refresh-secret',
-        ),
+        secret: this.config.getOrThrow<string>('REFRESH_TOKEN_SECRET'),
         expiresIn: `${sessionTtlSeconds}s`,
       },
     );
@@ -480,15 +593,14 @@ export class UsersService {
     password: string,
   ): Promise<RegisterResponseDto> {
     const existingEmail = await this.prisma.user.findUnique({
-      where: { email },
+      where: { email, deletedAt: null },
     });
     if (existingEmail) {
       throw new BadRequestException('Email already in use');
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
     const existingWallet = await this.prisma.user.findUnique({
-      where: { walletAddress },
+      where: { walletAddress, deletedAt: null },
     });
     if (existingWallet) {
       throw new BadRequestException('Wallet address already in use');
@@ -550,7 +662,7 @@ export class UsersService {
     const tokenHash = this.hashToken(token);
 
     const verification = await this.prisma.emailVerificationToken.findUnique({
-      where: { tokenHash },
+      where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
       include: { user: true },
     });
 
@@ -618,6 +730,8 @@ export class UsersService {
     role: UserRole,
     adminId: string,
   ): Promise<{ success: boolean; message: string }> {
+    await this.verifyAdminRole(adminId);
+
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
     });
@@ -745,5 +859,79 @@ export class UsersService {
     return Number.isInteger(parsedRounds) && parsedRounds > 0
       ? parsedRounds
       : 12;
+  }
+
+  /**
+   * Admin-only: clear `loginAttempts` and `lockedUntil` for a user so
+   * they can log in again. This is the manual "unlock" surface for
+   * Issue #232 — typically used after a user proves ownership of the
+   * account out-of-band (support ticket, email confirmation, etc.).
+   */
+  async unlockUser(
+    userId: string,
+    adminId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    await this.verifyAdminRole(adminId);
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.loginAttempts === 0 && !user.lockedUntil) {
+      return {
+        success: true,
+        message: 'User account is not locked',
+      };
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { loginAttempts: 0, lockedUntil: null },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: adminId,
+        action: 'ADMIN_ACTION',
+        resourceType: 'User',
+        resourceId: userId,
+        details: JSON.stringify({
+          action: 'ACCOUNT_UNLOCK',
+          previousLoginAttempts: user.loginAttempts,
+          previousLockedUntil: user.lockedUntil?.toISOString() ?? null,
+        }),
+      },
+    });
+
+    return {
+      success: true,
+      message: 'User account unlocked successfully',
+    };
+  }
+
+  /**
+   * Verify that the user has ADMIN role
+   * @param adminId - User ID or wallet address to verify
+   * @throws ForbiddenException if user is not an admin
+   */
+  private async verifyAdminRole(adminId: string): Promise<void> {
+    const admin = await this.prisma.user.findFirst({
+      where: {
+        OR: [{ id: adminId }, { walletAddress: adminId }],
+        deletedAt: null,
+      },
+    });
+
+    if (!admin) {
+      throw new ForbiddenException('User not found');
+    }
+
+    if (admin.role !== 'ADMIN') {
+      throw new ForbiddenException('Admin access required');
+    }
   }
 }

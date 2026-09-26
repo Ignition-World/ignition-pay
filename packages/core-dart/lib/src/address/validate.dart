@@ -139,6 +139,20 @@ ValidationResult validateStellar(String address, {bool strict = false}) {
     );
   }
 
+  // Reject the wrong length up front so truncated/padded input never
+  // reaches Base32 decoding, instead of relying solely on the checksum.
+  final expectedLength = prefix == 'M' ? 69 : 56;
+  if (address.length != expectedLength) {
+    return ValidationResult(
+      isValid: false,
+      network: BlockchainNetwork.stellar,
+      errorMessage:
+          'Invalid address length: expected $expectedLength characters for a $prefix-address, got ${address.length}',
+      errorCode: ErrorCode.invalidLength,
+      input: address,
+    );
+  }
+
   final kind = detect(address);
   if (kind == null) {
     return _createInvalidStellarResult(address, prefix);

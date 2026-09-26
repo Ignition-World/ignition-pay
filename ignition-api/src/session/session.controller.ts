@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   Req,
   UnauthorizedException,
@@ -17,14 +18,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
-import {
-  AuthenticatedRequest,
-  SessionGuard,
-} from './session.guard';
+import { SessionGuard } from './session.guard';
+import type { AuthenticatedRequest } from './session.guard';
 import { SessionMetadata, SessionService } from './session.service';
 
 class SessionInfoDto {
   sessionId: string;
+  walletAddress?: string;
+  role?: string;
   createdAt: number;
   lastSeenAt: number;
   expiresAt: number;
@@ -57,7 +58,9 @@ export class SessionController {
   async listSessions(
     @Req() req: AuthenticatedRequest,
   ): Promise<SessionInfoDto[]> {
-    const sessions = await this.sessionService.getActiveSessions(req.user.userId);
+    const sessions = await this.sessionService.getActiveSessions(
+      req.user.userId,
+    );
     return sessions.map((s) => this.toDto(s, req.user.sessionId));
   }
 
@@ -80,11 +83,14 @@ export class SessionController {
     if (!req.user) {
       throw new UnauthorizedException('Invalid token');
     }
-    // Users can only revoke their own sessions
     const session = await this.sessionService.getSession(sessionId);
-    if (session && session.userId === req.user.userId) {
-      await this.sessionService.revokeSession(req.user.userId, sessionId);
+    if (!session) {
+      throw new NotFoundException('Session not found');
     }
+    if (session.userId !== req.user.userId) {
+      throw new NotFoundException('Session not found');
+    }
+    await this.sessionService.revokeSession(req.user.userId, sessionId);
   }
 
   /**
@@ -103,9 +109,14 @@ export class SessionController {
 
   // ── Helper ─────────────────────────────────────────────────────────────────
 
-  private toDto(session: SessionMetadata, currentSessionId: string): SessionInfoDto {
+  private toDto(
+    session: SessionMetadata,
+    currentSessionId: string,
+  ): SessionInfoDto {
     return {
       sessionId: session.sessionId,
+      walletAddress: session.walletAddress,
+      role: session.role,
       createdAt: session.createdAt,
       lastSeenAt: session.lastSeenAt,
       expiresAt: session.expiresAt,

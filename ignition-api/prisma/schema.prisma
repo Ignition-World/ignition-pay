@@ -1,3 +1,5 @@
+// Pool sizing (Issue #593): PrismaService appends connection_limit (PRISMA_POOL_SIZE,
+// clamped 5–20) and pool_timeout (from PRISMA_POOL_TIMEOUT_MS) to DATABASE_URL at runtime.
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -7,6 +9,81 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum UserRole {
+  USER
+  DONOR
+  CREATOR
+  ADMIN
+}
+
+enum KycStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_APPROVAL
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum DonationStatus {
+  PENDING
+  CONFIRMED
+  REFUNDED
+  FAILED
+}
+
+enum MilestoneStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  FAILED
+}
+
+enum NotificationType {
+  CAMPAIGN_CREATED
+  CAMPAIGN_UPDATED
+  DONATION_RECEIVED
+  MILESTONE_REACHED
+  CAMPAIGN_COMPLETED
+  DISPUTE_FILED
+  DISPUTE_RESOLVED
+}
+
+enum DisputeStatus {
+  OPENED
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum AuditActionType {
+  USER_CREATED
+  CAMPAIGN_CREATED
+  CAMPAIGN_UPDATED
+  DONATION_MADE
+  MILESTONE_COMPLETED
+  DISPUTE_FILED
+  ADMIN_ACTION
+}
+
+enum KYCStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum WalletNetwork {
+  STELLAR
+  ETHEREUM
+  BITCOIN
+}
 
 enum TransactionStatus {
   PENDING
@@ -80,6 +157,10 @@ model User {
   @@index([isActive])
   @@index([kycStatus])
   @@index([deletedAt])
+  // Compound indexes for common filtered lookups
+  @@index([email, deletedAt])
+  @@index([walletAddress, deletedAt])
+  @@index([id, isActive, deletedAt])
   @@map("users")
 }
 
@@ -98,20 +179,60 @@ model PasswordHistory {
 
 /// ApiKey model for third-party integrations
 model ApiKey {
-  id        String   @id @default(uuid())
-  userId    String
-  name      String
-  keyHash   String   @unique
-  prefix    String
-  isActive  Boolean  @default(true)
-  scope     String   @default("read")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String    @id @default(uuid())
+  userId         String
+  name           String
+  keyHash        String    @unique
+  prefix         String
+  isActive       Boolean   @default(true)
+  scope          String    @default("read")
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  warningSentAt  DateTime?
+  rotationOfId   String?   /// If set, this key is the old key being rotated; it remains active during the grace period
+  rotationExpiresAt DateTime? /// When the rotation grace period ends; after this, the old key is auto-revoked
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([isActive, expiresAt])
+  @@index([isActive, rotationExpiresAt])
+  // Covering index for the guard's findUnique(keyHash, isActive) lookup
+  @@index([keyHash, isActive])
+  @@index([rotationOfId])
   @@map("api_keys")
+}
+
+/// SystemSettings model for global platform configuration
+/// Stores admin-configurable settings like session timeouts
+model SystemSettings {
+  id                    String   @id @default(uuid())
+  /// Access token TTL in seconds (default: 900s = 15min)
+  sessionAccessTtlSeconds Int     @default(900)
+  /// Absolute session TTL in seconds (default: 604800s = 7 days)
+  sessionTtlSeconds     Int      @default(604800)
+  /// Idle timeout in seconds - session expires if not updated within this time (default: 1800s = 30min)
+  sessionIdleTimeoutSeconds Int @default(1800)
+  /// Whether to enable session persistence (extend session on activity)
+  sessionPersistenceEnabled Boolean @default(true)
+  /// Maximum address-generation requests per IP in the configured throttle window.
+  addressGenerationThrottleLimit Int @default(5)
+  /// Address-generation throttle TTL in seconds.
+  addressGenerationThrottleTtlSeconds Int @default(60)
+  /// Alert threshold for per-IP address-generation throttle consumption (percent of limit).
+  addressGenerationThrottleAlertThresholdPercent Int @default(80)
+  /// Minimum sustained breach duration before a sustained-breach alert is emitted.
+  addressGenerationThrottleSustainedBreachMinutes Int @default(5)
+  /// Minimum unique IPs throttled within 1 minute before a rate-alert is emitted.
+  addressGenerationThrottleUniqueIpsThreshold Int @default(50)
+  /// Cooldown period in minutes between repeated throttle alerts.
+  addressGenerationThrottleAlertCooldownMinutes Int @default(10)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("system_settings")
 }
 
 /// Campaign model representing fundraising campaigns
@@ -141,6 +262,8 @@ model Campaign {
   @@index([status])
   @@index([createdAt])
   @@index([category])
+  // Compound index to support updateCampaign's status-filtered findUnique
+  @@index([id, status])
   @@map("campaigns")
 }
 
@@ -292,6 +415,8 @@ model EmailVerificationToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  // Compound index to support confirmEmail's filtered findUnique(tokenHash, usedAt, expiresAt)
+  @@index([tokenHash, usedAt, expiresAt])
   @@map("email_verification_tokens")
 }
 
@@ -333,6 +458,7 @@ model Wallet {
   isActive        Boolean       @default(true)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
 
   // Relations
   addresses        Address[]
@@ -345,6 +471,13 @@ model Wallet {
   @@index([depositAddress])
   @@index([network])
   @@index([status])
+  @@index([deletedAt])
+  // Compound indexes for id+isActive guard lookups (addresses service, wallets service)
+  @@index([id, isActive])
+  @@index([userId, isActive])
+  @@index([id, deletedAt])
+  @@index([userId, deletedAt])
+  @@index([id, isActive, deletedAt])
   @@map("wallets")
 }
 
@@ -384,6 +517,37 @@ model Transaction {
   @@map("transactions")
 }
 
+/// SEP-24 transaction model for tracking interactive deposit/withdraw flows
+model Sep24Transaction {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  walletId        String?   @map("wallet_id")
+  anchorName      String    @map("anchor_name")
+  operation       String    // "deposit" | "withdraw"
+  stellarAccount  String    @map("stellar_account")
+  assetCode       String    @map("asset_code")
+  assetIssuer     String?   @map("asset_issuer")
+  amount          Decimal?  @db.Decimal(20, 7)
+  anchorTxId      String?   @map("anchor_tx_id")
+  interactiveUrl  String?   @map("interactive_url")
+  callbackToken   String?   @map("callback_token") @unique
+  lastCallbackAt  DateTime? @map("last_callback_at")
+  status          String    @default("incomplete")
+  statusDesc      String?   @map("status_desc")
+  stellarTxHash   String?   @map("stellar_tx_hash")
+  moreInfoUrl     String?   @map("more_info_url")
+  message         String?
+  rawAnchorResponse Json?   @map("raw_anchor_response")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([anchorTxId])
+  @@index([status])
+  @@map("sep24_transactions")
+}
+
 /// Address model for deposit address management with allocation tracking
 model Address {
   id             String        @id @default(uuid())
@@ -406,7 +570,34 @@ model Address {
   @@index([isActive])
   @@index([allocatedAt])
   @@index([lastActivityAt])
+  // Compound indexes for stricter findUnique(address, isActive) and findUnique(id, isActive) queries
+  @@index([address, isActive])
+  @@index([id, isActive])
   @@map("addresses")
+}
+
+enum ReconciliationStatus {
+  PENDING
+  RESOLVED
+  IGNORED
+}
+
+/// BalanceDiscrepancy model for tracking wallet balance drift between DB and on-chain
+model BalanceDiscrepancy {
+  id             String              @id @default(uuid())
+  walletId       String
+  stellarAddress String
+  dbBalance      Decimal             @db.Decimal(18, 7)
+  onChainBalance Decimal             @db.Decimal(18, 7)
+  driftAmount    Decimal             @db.Decimal(18, 7)
+  status         ReconciliationStatus @default(PENDING)
+  notes          String?
+  createdAt      DateTime            @default(now())
+
+  @@index([walletId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("balance_discrepancies")
 }
 
 /// DepositAddress model for tracking generated deposit addresses associated with wallets
@@ -428,4 +619,35 @@ model DepositAddress {
   @@index([status])
   @@index([network])
   @@map("deposit_addresses")
+}
+enum WebhookAlgorithm {
+  RSA_SHA256
+  ECDSA_SHA256
+  HMAC_SHA256
+}
+
+/// AnchorConfig stores per-anchor SEP-24 webhook verification credentials.
+/// webhookSecret    – HMAC shared secret (hex or base64 encoded).
+/// webhookPublicKey – PEM-encoded RSA or ECDSA public key for asymmetric algos.
+/// algorithm        – Which signature scheme the anchor uses.
+model AnchorConfig {
+  id               String           @id @default(uuid())
+  /// Unique slug identifying the anchor (e.g. "circle", "moneygram")
+  anchorId         String           @unique
+  /// Human-readable name for display
+  name             String
+  /// Base URL of the anchor (e.g. "https://api.myanchor.com")
+  baseUrl          String
+  algorithm        WebhookAlgorithm @default(HMAC_SHA256)
+  /// HMAC_SHA256: hex- or base64-encoded shared secret
+  webhookSecret    String?
+  /// RSA_SHA256 / ECDSA_SHA256: PEM-encoded public key
+  webhookPublicKey String?
+  isActive         Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([anchorId])
+  @@index([isActive])
+  @@map("anchor_configs")
 }

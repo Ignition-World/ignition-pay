@@ -54,11 +54,13 @@ void main() {
       final result = RoutingResult(
         source: RoutingSource.memo,
         id: BigInt.from(99999),
+        memoType: 'id',
+        memoValue: '99999',
         warnings: [],
       );
       expect(
         result.toDisplayString(),
-        equals('Memo routing: ID 99999'),
+        equals('Memo routing: ID 99999 (memoType: id, memoValue: 99999)'),
       );
     });
 

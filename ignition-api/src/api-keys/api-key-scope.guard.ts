@@ -6,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
-import { API_KEY_SCOPE_KEY, ApiKeyScope } from './decorators/require-scope.decorator';
+import {
+  API_KEY_SCOPE_KEY,
+  ApiKeyScope,
+} from './decorators/require-scope.decorator';
 
 interface ApiKeyUser {
   id: string;
@@ -63,10 +66,14 @@ export class ApiKeyScopeGuard implements CanActivate {
       .switchToHttp()
       .getRequest<Request & { user?: ApiKeyUser }>();
 
-    const user = request.user as ApiKeyUser | undefined;
+    const user = request.user;
+
+    const requiredScopeDescription = requiredScopes.join(' or ');
 
     if (!user || !user.scope) {
-      throw new ForbiddenException('API key scope information is missing');
+      throw new ForbiddenException(
+        `API key is missing a scope. Required: ${requiredScopeDescription}.`,
+      );
     }
 
     const keyScope = user.scope as ApiKeyScope;
@@ -79,7 +86,7 @@ export class ApiKeyScopeGuard implements CanActivate {
     if (!hasRequiredScope) {
       throw new ForbiddenException(
         `API key scope '${keyScope}' is insufficient. ` +
-          `Required: ${requiredScopes.join(' or ')}.`,
+          `Required: ${requiredScopeDescription}.`,
       );
     }
 

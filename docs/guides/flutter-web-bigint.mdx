@@ -3,14 +3,18 @@ title: "Flutter Web: BigInt"
 description: "Avoiding precision loss in the browser."
 ---
 
-Flutter Web compiles to JavaScript, which means it shares the same 64-bit float limitations as any other JS application.
+Flutter Web compiles to JavaScript, so the browser's numeric semantics apply at the interop boundary. That matters for Stellar muxed account IDs because they are unsigned 64-bit integers and values above $2^{53} - 1$ cannot be represented safely as a JavaScript number.
 
-## The Problem
-If you parse a large Memo ID (near `18,446,744,073,709,551,615`) as an `int` in Dart when running on Web, you will lose precision.
+## The problem
 
-## The Solution
-The Dart package uses `BigInt` internally and returns the `routingId` as a `String`.
+If you parse a large memo ID or muxed ID as a Dart `int` while targeting web, you may lose precision. The same risk appears when you coerce those values to JavaScript numbers.
 
-<Warning>
-  Never convert the `routingId` to an `int` if your app targets Web. Always keep it as a `String` or a `BigInt`.
-</Warning>
+## Guidance
+
+- Keep muxed IDs as Dart `BigInt` values for as long as possible.
+- Do not coerce muxed IDs into JavaScript `Number` values on web targets.
+- If you need to serialize or transmit a muxed ID in a web flow, prefer a string representation and convert it back to `BigInt` explicitly.
+
+## Why it matters
+
+Precision loss in a muxed ID can route funds or metadata to the wrong account context. Treat muxed IDs as exact integers, not floating-point-compatible numbers.

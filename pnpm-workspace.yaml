@@ -1,2 +1,14 @@
 packages:
   - "packages/*"
+  - "ignition-api"
+  - "ignition-pay-frontend"
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@scarf/scarf': true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true

@@ -12,8 +12,8 @@ Part of a multi-language suite also available in **[TypeScript](https://github.c
 ---
 
 ### 📖 Documentation & Guides
-- [Flutter: Displaying Deposit Addresses](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/flutter-displaying-deposit-addresses.md)
-- [Flutter: Web BigInt Considerations](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/flutter-web-bigint.md)
+- [Flutter: Displaying Deposit Addresses](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/flutter-deposit-addresses.mdx)
+- [Flutter: Web BigInt Considerations](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/flutter-web-bigint.mdx)
 - [General: Compatibility Reference](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/compatibility-reference.md)
 
 ---

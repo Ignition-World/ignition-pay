@@ -3,20 +3,60 @@ title: "Flutter: Incoming Payments"
 description: "Reacting to payments in your wallet app."
 ---
 
-When your app detects an incoming payment (e.g., via Horizon stream), use the kit to identify the recipient ID.
+When your app detects an incoming payment, use the kit to identify the intended recipient and reconcile it with your local user state.
 
-## Implementation
+## Listening for payments
+
+Typically, your backend listens to the Stellar network and pushes updates to the Flutter app. If your app queries Horizon directly, it can parse the payment history to determine whether a payment belongs to the current user.
 
 ```dart
-void onPaymentReceived(PaymentResponse payment) {
-  final result = extractRouting(RoutingInput(
-    address: payment.to,
-    memoType: payment.memoType,
-    memoValue: payment.memo,
-  ));
+import 'package:stellar_flutter_sdk/stellar_flutter_sdk.dart';
+import 'package:stellar_address_kit/stellar_address_kit.dart';
 
-  if (result.routingId == currentUser.id.toString()) {
-    // Show notification: "Payment received!"
+Future<void> fetchPayments(String userMuxedAddress) async {
+  final server = StellarSDK.TESTNET;
+  final decoded = AddressDecoder.decodeMuxedAddress(userMuxedAddress);
+
+  final payments = await server.payments.forAccount(decoded.baseAddress).execute();
+
+  for (final payment in payments.records) {
+    if (payment is PaymentOperationResponse) {
+      _reconcilePayment(payment, decoded.id);
+    }
   }
 }
 ```
+
+## Reconciling a payment
+
+When an incoming payment arrives at a pooled G-address, determine whether it was intended for a specific user by matching the muxed destination or the transaction memo.
+
+```dart
+void _reconcilePayment(PaymentOperationResponse payment, int expectedId) async {
+  int? paymentId;
+
+  if (payment.to != null && payment.to!.startsWith('M')) {
+    final decodedTo = AddressDecoder.decodeMuxedAddress(payment.to!);
+    paymentId = decodedTo.id;
+  } else {
+    final tx = await StellarSDK.TESTNET.transactions.transaction(payment.transactionHash);
+    if (tx.memo is MemoId) {
+      paymentId = (tx.memo as MemoId).getId();
+    }
+  }
+
+  if (paymentId == expectedId) {
+    print('Found a deposit of ${payment.amount} ${payment.assetCode} for the user!');
+  }
+}
+```
+
+## Handling missing memos
+
+A common issue is a user sending funds to the pooled address without attaching the required memo. The recommended approach is to flag those payments for review or manual intervention.
+
+## BigInt caveats on web
+
+Stellar memo IDs and muxed IDs are 64-bit integers. On Flutter Web, keep them as BigInt or String values rather than coercing them to JavaScript numbers.
+
+For more detail, see the [Flutter Web BigInt guide](flutter-web-bigint).
