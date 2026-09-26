@@ -43,6 +43,11 @@ class ApiClient {
   /// ready to dispatch requests.
   bool get isInitialized => _initialized;
 
+  /// Returns the current auth token if available.
+  String? getAuthToken() {
+    return dotenv.env['AUTH_TOKEN'];
+  }
+
   final EnvConfig _envConfig = EnvConfig();
 
   /// Lock for coalescing concurrent token refresh requests.
@@ -199,7 +204,7 @@ class ApiClient {
 
       // Create a new dio instance to avoid triggering interceptors
       final refreshDio = refreshClientFactory();
-      final response = await refreshDio.post(
+      final response = await refreshDio.post<dynamic>(
         '/auth/refresh',
         data: {'refresh_token': refreshToken},
         options: Options(
@@ -288,7 +293,7 @@ class ApiClient {
     options.headers['Authorization'] = 'Bearer $token';
 
     try {
-      final clonedRequest = await dio.request(
+      final clonedRequest = await dio.request<dynamic>(
         options.path,
         options: Options(
           method: options.method,
