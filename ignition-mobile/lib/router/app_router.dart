@@ -4,6 +4,7 @@ import '../core/routing/deep_link.dart';
 import '../core/security/secure_screen_wrapper.dart';
 import '../features/auth/services/biometric_services.dart';
 import '../features/home/pages/home_page.dart';
+import '../features/notifications/pages/notification_center_page.dart';
 import '../features/send/pages/pending_sends_page.dart';
 import '../features/send/payment_review_page.dart';
 import '../features/send/services/draft_services.dart';
@@ -84,6 +85,11 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => SecuritySettingsPage(
         biometricService: BiometricServices.service,
       ),
+    ),
+    GoRoute(
+      path: '/notifications',
+      name: 'notifications',
+      builder: (context, state) => const NotificationCenterPage(),
     ),
     GoRoute(
       path: '/transaction/:id',
