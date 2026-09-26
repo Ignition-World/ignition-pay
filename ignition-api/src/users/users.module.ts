@@ -11,6 +11,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsService } from '../auth/permissions/permissions.service';
 import { PermissionsGuard } from '../auth/permissions/permissions.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { EmailVerificationTokenScheduler } from './email-verification-token.scheduler';
 
 @Module({
   imports: [
@@ -35,6 +36,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     RolesGuard,
     PermissionsService,
     PermissionsGuard,
+    // Issue #617 — purges spent email verification tokens on a timer.
+    EmailVerificationTokenScheduler,
   ],
   exports: [UsersService],
 })

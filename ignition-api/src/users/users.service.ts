@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
@@ -56,6 +57,8 @@ const userProfileInclude = {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -610,11 +613,12 @@ export class UsersService {
     const token = this.generateConfirmationToken();
     const tokenHash = this.hashToken(token);
 
-    const expiresHours = this.config.get<number>(
-      'EMAIL_TOKEN_EXPIRES_HOURS',
-      24,
-    );
-    const expiresAt = new Date(Date.now() + expiresHours * 60 * 60 * 1000);
+    const expiresAt = this.emailTokenExpiresAt();
+
+    // Issue #617 — invalidate any token already issued for this user so at
+    // most one is ever usable. Marked used rather than deleted so the row
+    // survives as an audit record of the superseded link.
+    await this.invalidateActiveEmailTokens(user.id);
 
     await this.prisma.emailVerificationToken.create({
       data: {
@@ -631,6 +635,11 @@ export class UsersService {
 
   /**
    * POST /users/confirm-email
+   *
+   * Issue #617 — the claim is a single conditional `updateMany`, so exactly
+   * one concurrent caller can transition a token out of `usedAt: null`. The
+   * previous read-then-write was not atomic: two in-flight confirmations could
+   * both observe `usedAt: null` and both succeed.
    */
   async confirmEmail(token: string): Promise<RegisterResponseDto> {
     if (!token) {
@@ -639,35 +648,97 @@ export class UsersService {
 
     const tokenHash = this.hashToken(token);
 
+    // Read first, to learn the user id and to fail fast on an unknown token.
+    // A row that is missing, already used or already expired is reported
+    // identically, so the endpoint does not tell a caller guessing token
+    // values which of the three it hit.
     const verification = await this.prisma.emailVerificationToken.findUnique({
-      where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
-      include: { user: true },
+      where: { tokenHash },
     });
 
-    if (!verification || !verification.user) {
+    if (!verification || !verification.userId) {
       throw new BadRequestException('Invalid or expired token');
     }
 
-    if (verification.usedAt) {
-      throw new BadRequestException('Token already used');
-    }
+    // Atomic claim: one statement, guarded by the same `usedAt: null`
+    // predicate, so the row is claimed only if nobody claimed it first.
+    // `tokenHash` is unique, so a zero-row result means the token is already
+    // used or already expired — it can no longer be redeemed either way.
+    const claimed = await this.prisma.emailVerificationToken.updateMany({
+      where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { usedAt: new Date() },
+    });
 
-    if (verification.expiresAt <= new Date()) {
+    if (claimed.count === 0) {
       throw new BadRequestException('Invalid or expired token');
     }
 
-    await this.prisma.$transaction([
-      this.prisma.emailVerificationToken.update({
-        where: { tokenHash },
-        data: { usedAt: new Date() },
-      }),
-      this.prisma.user.update({
-        where: { id: verification.userId },
-        data: { emailVerifiedAt: new Date() },
-      }),
-    ]);
+    await this.prisma.user.update({
+      where: { id: verification.userId },
+      data: { emailVerifiedAt: new Date() },
+    });
 
     return { message: 'Email confirmed successfully.' };
+  }
+
+  /**
+   * Issue #617 — mark every still-usable verification token for `userId` as
+   * used, so issuing a new token revokes the previous one without deleting
+   * the row: the `usedAt` stamp is the audit trail.
+   */
+  private async invalidateActiveEmailTokens(userId: string): Promise<void> {
+    await this.prisma.emailVerificationToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+  }
+
+  /** Absolute expiry for a newly issued email verification token. */
+  private emailTokenExpiresAt(): Date {
+    const expiresHours = this.config.get<number>(
+      'EMAIL_TOKEN_EXPIRES_HOURS',
+      24,
+    );
+
+    return new Date(Date.now() + expiresHours * 60 * 60 * 1000);
+  }
+
+  /**
+   * Issue #617 — delete tokens that expired, or that were used, more than
+   * `retentionDays` ago (default `EMAIL_TOKEN_RETENTION_DAYS`, 30). This keeps
+   * the table bounded while preserving a short audit trail. Invoked on startup
+   * and then periodically by `EmailVerificationTokenScheduler`.
+   *
+   * @returns the number of rows removed.
+   */
+  async purgeExpiredEmailVerificationTokens(
+    retentionDays: number = this.emailTokenRetentionDays(),
+  ): Promise<number> {
+    const cutoff = new Date(
+      Date.now() - Math.max(retentionDays, 0) * 24 * 60 * 60 * 1000,
+    );
+
+    const { count } = await this.prisma.emailVerificationToken.deleteMany({
+      where: {
+        OR: [{ expiresAt: { lt: cutoff } }, { usedAt: { lt: cutoff } }],
+      },
+    });
+
+    if (count > 0) {
+      this.logger.log(
+        `Purged ${count} email verification token(s) older than ${cutoff.toISOString()}`,
+      );
+    }
+
+    return count;
+  }
+
+  /** Retention window for used/expired tokens, in days. */
+  private emailTokenRetentionDays(): number {
+    const configured = Number(
+      this.config.get('EMAIL_TOKEN_RETENTION_DAYS', 30),
+    );
+    return Number.isFinite(configured) && configured >= 0 ? configured : 30;
   }
 
   /**
