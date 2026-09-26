@@ -25,8 +25,12 @@ afterEach(cleanup)
  * the same space as the components they stand in for.
  */
 describe('useMinimumLoading', () => {
-  beforeEach(() => vi.useFakeTimers())
-  afterEach(() => vi.useRealTimers())
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
 
   it('starts false when nothing is loading', () => {
     const { result } = renderHook(() => useMinimumLoading(false))

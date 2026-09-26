@@ -42,7 +42,9 @@ function TransactionStatusBadge({
   const { t } = useTranslation()
   const isOptimistic = isOptimisticTransaction(transaction)
 
-  if (isOptimistic) {
+  // A confirmed optimistic entry falls through to the normal status badge, so
+  // the user sees Pending become Confirmed on the same row.
+  if (isOptimistic && transaction.status === 'pending') {
     return (
       <span
         className="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-500 inline-flex items-center gap-1 font-medium"

@@ -17,7 +17,11 @@ import { groupAssets, portfolioChange24h, totalValue } from '@/features/dashboar
 import { useWalletBalances, useQuickStats } from '@/features/dashboard/state'
 import { fetchTransactions } from '@/features/history/services'
 import { useOptimisticTransactions } from '@/features/history/state'
-import type { Transaction, OptimisticTransaction } from '@/features/history/models'
+import {
+  mergeOptimisticTransactions,
+  type Transaction,
+  type OptimisticTransaction,
+} from '@/features/history/models'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useTranslation } from '@/lib/i18n'
 import { useMinimumLoading } from '@/hooks/use-minimum-loading'
@@ -81,9 +85,12 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
     void loadRecentTransactions()
   }, [loadRecentTransactions])
 
-  const recentTransactions = useMemo<Array<Transaction | OptimisticTransaction>>(() => {
-    return [...optimisticEntries, ...realTransactions].slice(0, 5)
-  }, [optimisticEntries, realTransactions])
+  const recentTransactions = useMemo<Array<Transaction | OptimisticTransaction>>(
+    // #626 — a confirmed optimistic entry is dropped only once the server's copy
+    // of it arrives, so the row never disappears between the two.
+    () => mergeOptimisticTransactions(realTransactions, optimisticEntries).slice(0, 5),
+    [optimisticEntries, realTransactions],
+  )
 
   const handleRefresh = useCallback(() => {
     refresh()
