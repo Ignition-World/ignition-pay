@@ -5,6 +5,7 @@ import { Download, Search } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { TransactionRow } from '@/components/transaction-row'
+import { useRovingFocus } from '@/hooks/use-roving-focus'
 import { EmptyState } from '@/components/empty-state'
 import { useOptimisticTransactions } from '@/features/history/state'
 import { fetchTransactions } from '@/features/history/services'
@@ -172,6 +173,13 @@ export function HistoryPage() {
     ...optimisticEntries,
     ...transactions,
   ]
+
+  // #628 — the row list is one tab stop; Arrow Up/Down move within it.
+  const {
+    containerRef: rowListRef,
+    onKeyDown: onRowListKeyDown,
+    itemTabIndex: rowTabIndex,
+  } = useRovingFocus<HTMLUListElement>({ itemCount: visibleTransactions.length })
 
   const handleExport = useCallback(() => {
     if (visibleTransactions.length === 0) {
@@ -380,14 +388,21 @@ export function HistoryPage() {
           )
         ) : (
           <div className="space-y-3">
-            {visibleTransactions.map((tx) => {
-              const key = 'optimisticId' in tx ? tx.optimisticId : tx.id
-              return (
-                <div key={key}>
-                  <TransactionRow transaction={tx} />
-                </div>
-              )
-            })}
+            <ul
+              ref={rowListRef}
+              onKeyDown={onRowListKeyDown}
+              aria-label="Transaction history"
+              className="space-y-3"
+            >
+              {visibleTransactions.map((tx, index) => {
+                const key = 'optimisticId' in tx ? tx.optimisticId : tx.id
+                return (
+                  <li key={key}>
+                    <TransactionRow transaction={tx} tabIndex={rowTabIndex(index)} />
+                  </li>
+                )
+              })}
+            </ul>
             {hasMore && (
               <div ref={sentinelRef} className="flex justify-center py-4 text-sm text-muted-foreground">
                 {isLoadingMore ? 'Loading more transactions…' : 'Scroll to load more'}
