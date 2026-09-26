@@ -15,6 +15,7 @@ import { QueueModule } from '../queue/queue.module';
 import { DashboardCacheService } from './dashboard-cache.service';
 import { DashboardCacheProcessor } from '../queue/processors/dashboard-cache.processor';
 import { DashboardCacheScheduler } from '../queue/processors/dashboard-cache.scheduler';
+import { DataExportModule } from './data-export.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { DashboardCacheScheduler } from '../queue/processors/dashboard-cache.sch
     SessionModule,
     NotificationsModule,
     QueueModule,
+    DataExportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
