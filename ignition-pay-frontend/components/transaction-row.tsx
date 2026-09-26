@@ -89,9 +89,15 @@ function TransactionStatusBadge({
 
 interface TransactionRowProps {
   transaction: Transaction | OptimisticTransaction
+  /**
+   * tabIndex for roving focus (issue #628). A list managed by
+   * {@link useRovingFocus} passes 0 for the active row and -1 for the others, so
+   * the whole list is one tab stop. Omitted, the row behaves as an ordinary link.
+   */
+  tabIndex?: number
 }
 
-export function TransactionRow({ transaction }: TransactionRowProps) {
+export function TransactionRow({ transaction, tabIndex }: TransactionRowProps) {
   const { t } = useTranslation()
   const { type, asset, amount, recipient, timestamp, status } = transaction
   const displayRecipient = recipient.slice(0, 6) + '...' + recipient.slice(-4)
@@ -110,7 +116,13 @@ export function TransactionRow({ transaction }: TransactionRowProps) {
   return (
     <Link
       href={isOptimistic ? '#' : `/transactions/${txId}`}
+      data-roving-item=""
+      tabIndex={tabIndex}
       className={`flex items-center justify-between py-4 px-4 rounded-lg transition-colors border ${
+        // A roving list is only usable if you can see where you are, and the row
+        // had no focus styling at all.
+        'outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background '
+      }${
         isOptimistic
           ? 'bg-yellow-500/5 border-yellow-500/30 hover:bg-yellow-500/10'
           : 'border-transparent hover:bg-muted/50 hover:border-border'
