@@ -118,3 +118,34 @@ export class SubmitTransactionDto {
   /** Idempotency key — provide the Stellar tx hash to dedupe retries (#244) */
   stellarTxHash?: string;
 }
+
+export class EstimateFeeQueryDto {
+  @ApiPropertyOptional({ description: 'Asset code (e.g. XLM, USDC)' })
+  @IsOptional()
+  @IsString()
+  assetCode?: string;
+
+  @ApiPropertyOptional({ description: 'Transaction amount' })
+  @IsOptional()
+  @IsString()
+  amount?: string;
+
+  @ApiPropertyOptional({ description: 'Recipient address' })
+  @IsOptional()
+  @IsString()
+  recipient?: string;
+
+  @ApiPropertyOptional({ enum: WalletNetwork, default: WalletNetwork.STELLAR })
+  @IsOptional()
+  @IsEnum(WalletNetwork)
+  network?: WalletNetwork = WalletNetwork.STELLAR;
+}
+
+export class FeeEstimateResponseDto {
+  feeAmount: string;
+  assetCode: string;
+  fiatAmount: string;
+  fiatCurrency: string;
+  minimumNetworkFee: string;
+  feeType: string;
+}

@@ -468,3 +468,46 @@ describe('TransactionsService.submitTransaction', () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+
+describe('TransactionsService.estimateFee', () => {
+  let service: TransactionsService;
+  let prisma: ReturnType<typeof buildPrisma>;
+
+  beforeEach(() => {
+    prisma = buildPrisma();
+    // @ts-ignore
+    service = new TransactionsService(prisma);
+  });
+
+  it('estimates fee for Stellar XLM transaction with fiat equivalent', async () => {
+    const res = await service.estimateFee({
+      assetCode: 'XLM',
+      amount: '100',
+    });
+
+    expect(res).toEqual({
+      feeAmount: '0.0000100',
+      assetCode: 'XLM',
+      fiatAmount: '0.0000',
+      fiatCurrency: 'USD',
+      minimumNetworkFee: '0.0000100',
+      feeType: 'standard',
+    });
+  });
+
+  it('estimates fee for Ethereum transaction', async () => {
+    const res = await service.estimateFee({
+      network: WalletNetwork.ETHEREUM,
+      assetCode: 'ETH',
+    });
+
+    expect(res).toEqual({
+      feeAmount: '0.0001000',
+      assetCode: 'ETH',
+      fiatAmount: '0.2500',
+      fiatCurrency: 'USD',
+      minimumNetworkFee: '0.0001000',
+      feeType: 'standard',
+    });
+  });
+});

@@ -10,11 +10,12 @@ const allowAllGuard = { canActivate: (_ctx: ExecutionContext) => true };
 
 describe('TransactionsController', () => {
   let controller: TransactionsController;
-  let service: jest.Mocked<Pick<TransactionsService, 'getTransactions'>>;
+  let service: jest.Mocked<Pick<TransactionsService, 'getTransactions' | 'estimateFee'>>;
 
   beforeEach(async () => {
     service = {
       getTransactions: jest.fn(),
+      estimateFee: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -38,6 +39,24 @@ describe('TransactionsController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('estimateFee() should call transactionsService.estimateFee', async () => {
+    const query = { assetCode: 'XLM' };
+    const mockResponse = {
+      feeAmount: '0.0000100',
+      assetCode: 'XLM',
+      fiatAmount: '0.0000',
+      fiatCurrency: 'USD',
+      minimumNetworkFee: '0.0000100',
+      feeType: 'standard',
+    };
+    service.estimateFee.mockResolvedValue(mockResponse as any);
+
+    const res = await controller.estimateFee(query);
+
+    expect(service.estimateFee).toHaveBeenCalledWith(query);
+    expect(res).toEqual(mockResponse);
   });
 
   it('getTransactions() should call transactionsService.getTransactions and return cursor-paginated result', async () => {
