@@ -5,6 +5,7 @@ import {
   MinLength,
   IsEmail,
   IsUrl,
+  IsJSON,
   Matches,
 } from 'class-validator';
 
@@ -17,6 +18,9 @@ export class UpdateUserDto {
   @IsString()
   @MinLength(1)
   @MaxLength(100)
+  @Matches(/^[^<>]*$/, {
+    message: 'name must not contain HTML tags',
+  })
   name?: string;
 
   @IsOptional()
@@ -29,6 +33,8 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
+  @IsJSON()
+  @MaxLength(5000)
   preferences?: string; // JSON stringified object
 
   @IsOptional()
@@ -40,6 +46,9 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @Matches(/^[^<>]*$/, {
+    message: 'bio must not contain HTML tags',
+  })
   bio?: string;
 
   @IsOptional()
@@ -49,5 +58,13 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
+  @IsJSON()
+  @MaxLength(5000)
   socialLinks?: string; // JSON stringified object
+
+  @IsOptional()
+  @IsString()
+  @IsJSON()
+  @MaxLength(5000)
+  notificationPreferences?: string; // JSON stringified object
 }

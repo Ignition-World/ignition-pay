@@ -96,7 +96,7 @@ export class LoggingInterceptor implements NestInterceptor {
       params,
       query,
       requestContentLength: contentLength,
-      requestHeaders: sanitizeHeaders(req.headers as Record<string, unknown>),
+      requestHeaders: sanitizeHeaders(req.headers),
       requestBody: truncateBody(sanitizeBody(req.body)),
     };
 
@@ -114,9 +114,7 @@ export class LoggingInterceptor implements NestInterceptor {
           durationMs: Math.round(durationMs * 100) / 100,
           slow: isSlowRequest,
           responseContentLength,
-          responseHeaders: sanitizeHeaders(
-            res.getHeaders() as Record<string, unknown>,
-          ),
+          responseHeaders: sanitizeHeaders(res.getHeaders()),
           responseBody: truncateBody(sanitizeBody(responseBody)),
           userId: (req as Request & { user?: { id?: string } }).user?.id,
         };

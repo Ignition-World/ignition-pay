@@ -122,12 +122,37 @@ declare function decodeMuxed(mAddress: string): {
     id: bigint;
 };
 
+/**
+ * Feature flags for routing logic.
+ *
+ * `experimentalRouting` gates the new multi-chain routing model that resolves
+ * addresses via `SourceAddress` / `TargetChains`. When `false` (the default)
+ * the stable memo-based routing path is used. When `true` the experimental
+ * path is invoked instead.
+ *
+ * The flag can be set per-call through {@link RoutingInput.flags} so that
+ * callers can opt in without affecting the rest of the application.
+ */
+type RoutingFlags = {
+    /** Enable the experimental multi-chain routing path. Defaults to `false`. */
+    experimentalRouting?: boolean;
+};
+/** Default flag values — stable behaviour is always the default. */
+declare const DEFAULT_ROUTING_FLAGS: Required<RoutingFlags>;
+/**
+ * Merges caller-supplied flags with the defaults, returning a fully-resolved
+ * flag set. Missing flags fall back to their default values.
+ */
+declare function resolveFlags(flags?: RoutingFlags): Required<RoutingFlags>;
+
 type RoutingSource = "muxed" | "memo" | "none";
 type RoutingInput = {
     destination: string;
     memoType: string;
     memoValue: string | null;
     sourceAccount: string | null;
+    /** Optional feature flags to control routing behaviour for this call. */
+    flags?: RoutingFlags;
 };
 type KnownMemoType = "none" | "id" | "text" | "hash" | "return";
 type RoutingResult = {
@@ -152,7 +177,10 @@ declare class ExtractRoutingError extends Error {
  * 1. M-addresses: Routing ID is extracted from the address; any memo is ignored for routing.
  * 2. G-addresses: Routing ID is extracted from MEMO_ID or numeric MEMO_TEXT if valid.
  *
- * @param input - The destination address and optional memo components.
+ * Pass `flags: { experimentalRouting: true }` inside `input` to opt in to the
+ * experimental multi-chain routing path (gated behind a feature flag).
+ *
+ * @param input - The destination address, optional memo components, and optional flags.
  * @returns A result containing the base account, routing ID, source, and any warnings.
  */
 declare function extractRouting(input: RoutingInput): RoutingResult;
@@ -161,13 +189,25 @@ declare function extractRouting(input: RoutingInput): RoutingResult;
  * Extracts routing information from a Stellar transaction.
  *
  * @param {Transaction} tx - The transaction to extract routing info from.
+ * @param {RoutingFlags} [flags] - Optional feature flags forwarded to {@link extractRouting}.
  * @returns {RoutingResult | null} The routing result or null if the transaction is not a simple payment.
  */
-declare function extractRoutingFromTx(tx: any): RoutingResult | null;
+declare function extractRoutingFromTx(tx: any, flags?: RoutingFlags): RoutingResult | null;
 
 type NormalizeResult = {
     normalized: string | null;
     warnings: Warning[];
+};
+type MemoValidationResult = {
+    valid: boolean;
+    type: string;
+    normalizedValue: string | null;
+    warnings: Warning[];
+    error?: string;
+};
+type GeneratedMemo = {
+    type: KnownMemoType;
+    value: string;
 };
 /**
  * Normalizes a numeric string into a canonical uint64 representation.
@@ -177,5 +217,38 @@ type NormalizeResult = {
  * @returns Result containing the normalized string (or null if invalid) and any warnings.
  */
 declare function normalizeMemoTextId(s: string): NormalizeResult;
+/**
+ * Validates a MEMO_TEXT string (must be <= 28 UTF-8 bytes).
+ */
+declare function validateMemoText(text: string): boolean;
+/**
+ * Validates a MEMO_HASH string (must be 64-character hexadecimal representation of 32 bytes).
+ */
+declare function validateMemoHash(hash: string): boolean;
+/**
+ * Validates a MEMO_ID string or bigint (must be a valid uint64: 0 to 18446744073709551615).
+ */
+declare function validateMemoId(id: string | bigint): boolean;
+/**
+ * Unified validator for Stellar memos (none, id, text, hash, return).
+ */
+declare function validateMemo(type: KnownMemoType | string, value: string | null | undefined): MemoValidationResult;
+/**
+ * Generates a valid MEMO_TEXT value (ensures max 28 UTF-8 bytes).
+ */
+declare function generateMemoText(text: string): string;
+/**
+ * Generates a valid MEMO_HASH 64-char lowercase hex string.
+ * Accepts a 64-char hex string, a 32-byte Uint8Array, or pads/formats string.
+ */
+declare function generateMemoHash(input: string | Uint8Array): string;
+/**
+ * Generates a valid canonical MEMO_ID string.
+ */
+declare function generateMemoId(id: string | bigint): string;
+/**
+ * Unified memo generator for Stellar transactions.
+ */
+declare function generateMemo(type: KnownMemoType, value: string | bigint | Uint8Array): GeneratedMemo;
 
-export { type Address, type AddressKind, AddressParseError, type ErrorCode, ExtractRoutingError, type KnownMemoType, type NormalizeResult, type ParseResult, type RoutingInput, type RoutingResult, type RoutingSource, type Warning, type WarningCode, decodeMuxed, detect, encodeMuxed, extractRouting, extractRoutingFromTx, normalizeMemoTextId, parse, routingIdAsBigInt, validate };
+export { type Address, type AddressKind, AddressParseError, DEFAULT_ROUTING_FLAGS, type ErrorCode, ExtractRoutingError, type GeneratedMemo, type KnownMemoType, type MemoValidationResult, type NormalizeResult, type ParseResult, type RoutingFlags, type RoutingInput, type RoutingResult, type RoutingSource, type Warning, type WarningCode, decodeMuxed, detect, encodeMuxed, extractRouting, extractRoutingFromTx, generateMemo, generateMemoHash, generateMemoId, generateMemoText, normalizeMemoTextId, parse, resolveFlags, routingIdAsBigInt, validate, validateMemo, validateMemoHash, validateMemoId, validateMemoText };

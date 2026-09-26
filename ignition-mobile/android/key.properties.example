@@ -1,0 +1,6 @@
+# Copy to android/key.properties (gitignored) and fill in real values
+# after generating the release keystore — see docs/SIGNING.md.
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=ignition
+storeFile=ignition-release.jks

@@ -29,7 +29,10 @@ export class CreateAddressDto {
   @MaxLength(100)
   label?: string;
 
-  @ApiPropertyOptional({ description: 'Whether the address is active', default: true })
+  @ApiPropertyOptional({
+    description: 'Whether the address is active',
+    default: true,
+  })
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;

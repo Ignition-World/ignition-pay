@@ -5,9 +5,13 @@ import '../exceptions.dart';
 
 class MuxedDecoder {
   static DecodedMuxedAddress decodeMuxedString(String mAddress) {
-    final decoded = StrKeyUtil.decodeBase32(mAddress);
+    // Use decodeBase32Checked to validate the CRC-16 checksum on the
+    // input address. On checksum mismatch it throws FormatException,
+    // which the caller (MuxedAddress.decode) wraps as a
+    // StellarAddressException.
+    final decoded = StrKeyUtil.decodeBase32Checked(mAddress);
     
-    if (decoded.length != 43) {
+    if (decoded.length != 41) {
       throw const StellarAddressException('Invalid muxed address length');
     }
     

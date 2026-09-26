@@ -6,11 +6,17 @@ import { AuthTokenService } from './auth-token.service';
 describe('AuthLogoutController', () => {
   let controller: AuthLogoutController;
   let sessionService: { revokeSession: jest.Mock };
-  let tokenService: { revokeRefreshToken: jest.Mock };
+  let tokenService: {
+    revokeRefreshToken: jest.Mock;
+    blacklistAccessToken: jest.Mock;
+  };
 
   beforeEach(() => {
     sessionService = { revokeSession: jest.fn().mockResolvedValue(undefined) };
-    tokenService = { revokeRefreshToken: jest.fn().mockResolvedValue(undefined) };
+    tokenService = {
+      revokeRefreshToken: jest.fn().mockResolvedValue(undefined),
+      blacklistAccessToken: jest.fn().mockResolvedValue(undefined),
+    };
 
     controller = new AuthLogoutController(
       sessionService as unknown as SessionService,
@@ -18,7 +24,7 @@ describe('AuthLogoutController', () => {
     );
   });
 
-  it('revokes the session and invalidates the refresh token on logout', async () => {
+  it('blacklists the access token, revokes the session and invalidates the refresh token on logout', async () => {
     const req = {
       user: {
         userId: 'user-123',
@@ -29,7 +35,10 @@ describe('AuthLogoutController', () => {
 
     const result = await controller.logout(req as any);
 
-    // Session is revoked so the access token can no longer be used.
+    // Access token is blacklisted so JwtAuthGuard-protected endpoints reject it.
+    expect(tokenService.blacklistAccessToken).toHaveBeenCalledWith('sess-abc');
+
+    // Session is revoked so the access token can't be used any more.
     expect(sessionService.revokeSession).toHaveBeenCalledWith(
       'user-123',
       'sess-abc',
@@ -51,6 +60,7 @@ describe('AuthLogoutController', () => {
 
     await controller.logout(req as any);
 
+    expect(tokenService.blacklistAccessToken).toHaveBeenCalledWith('sess-abc');
     expect(sessionService.revokeSession).toHaveBeenCalledWith(
       'user-123',
       'sess-abc',
@@ -63,12 +73,16 @@ describe('AuthLogoutController', () => {
       UnauthorizedException,
     );
 
+    expect(tokenService.blacklistAccessToken).not.toHaveBeenCalled();
     expect(sessionService.revokeSession).not.toHaveBeenCalled();
     expect(tokenService.revokeRefreshToken).not.toHaveBeenCalled();
   });
 
-  it('revokes session before invalidating the refresh token (ordering matters)', async () => {
+  it('blacklists access token before revoking session and refresh token (ordering matters)', async () => {
     const callOrder: string[] = [];
+    tokenService.blacklistAccessToken.mockImplementation(async () => {
+      callOrder.push('blacklist');
+    });
     sessionService.revokeSession.mockImplementation(async () => {
       callOrder.push('session');
     });
@@ -86,6 +100,6 @@ describe('AuthLogoutController', () => {
 
     await controller.logout(req as any);
 
-    expect(callOrder).toEqual(['session', 'refresh']);
+    expect(callOrder).toEqual(['blacklist', 'session', 'refresh']);
   });
 });

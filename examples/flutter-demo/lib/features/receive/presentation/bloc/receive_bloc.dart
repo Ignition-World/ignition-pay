@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/services.dart';
 import '../../domain/entities/deposit_instruction.dart';
 import '../../domain/usecases/generate_deposit_instruction.dart';
 
@@ -53,6 +54,11 @@ class ReceiveBloc extends Bloc<ReceiveEvent, ReceiveState> {
 
   ReceiveBloc({required this.generateUseCase}) : super(ReceiveInitial()) {
     on<ReceiveFieldsChanged>(_onFieldsChanged);
+  }
+
+  static Future<String?> getClipboardAddress() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    return data?.text;
   }
 
   void _onFieldsChanged(ReceiveFieldsChanged event, Emitter<ReceiveState> emit) {

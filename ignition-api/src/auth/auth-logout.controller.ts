@@ -5,6 +5,7 @@ import {
   Post,
   Req,
   UnauthorizedException,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -15,12 +16,12 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
-import {
-  AuthenticatedRequest,
-  SessionGuard,
-} from '../session/session.guard';
+import { SessionGuard } from '../session/session.guard';
+import type { AuthenticatedRequest } from '../session/session.guard';
 import { SessionService } from '../session/session.service';
 import { AuthTokenService } from './auth-token.service';
+import { AuthExceptionFilter } from './filters/auth-exception.filter';
+import { AuthErrorResponseDto } from '../common/dto/error-response.dto';
 
 interface LogoutResponse {
   message: string;
@@ -38,6 +39,7 @@ interface LogoutResponse {
  */
 @ApiTags('auth')
 @Controller('auth')
+@UseFilters(AuthExceptionFilter)
 @Throttle({ strict: { limit: 5, ttl: 60_000 } })
 export class AuthLogoutController {
   constructor(
@@ -49,7 +51,9 @@ export class AuthLogoutController {
   @UseGuards(SessionGuard)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Logout and revoke the current session + refresh token' })
+  @ApiOperation({
+    summary: 'Logout and revoke the current session + refresh token',
+  })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Session and refresh token successfully revoked',
@@ -57,6 +61,7 @@ export class AuthLogoutController {
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
     description: 'Invalid or missing access token',
+    type: AuthErrorResponseDto,
   })
   async logout(@Req() req: AuthenticatedRequest): Promise<LogoutResponse> {
     if (!req.user) {
@@ -64,6 +69,10 @@ export class AuthLogoutController {
     }
 
     const { userId, sessionId, walletAddress } = req.user;
+
+    // Blacklist the access token so JwtAuthGuard-protected endpoints
+    // (e.g. GET /users/me) reject it immediately — not just SessionGuard.
+    await this.tokenService.blacklistAccessToken(sessionId);
 
     // Revoke the session so the access token can't be used any more.
     await this.sessionService.revokeSession(userId, sessionId);

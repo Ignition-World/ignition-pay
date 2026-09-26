@@ -128,6 +128,15 @@ import '../util/strkey.dart';
 ///   codes.
 /// - `StrKeyUtil` for the Base32 decoding and CRC-16 checksum primitives used
 ///   internally by this function.
+/// StrKey version byte for classic [AddressKind.g] accounts (decimal 48).
+const int kVersionByteG = 0x30;
+
+/// StrKey version byte for muxed [AddressKind.m] accounts (decimal 96).
+const int kVersionByteM = 0x60;
+
+/// StrKey version byte for Soroban [AddressKind.c] contracts (decimal 16).
+const int kVersionByteC = 0x10;
+
 AddressKind? detect(String address) {
   if (address.isEmpty) return null;
 
@@ -152,13 +161,16 @@ AddressKind? detect(String address) {
     final versionByte = payload[0];
     switch (prefix) {
       case 'G':
-        if (decoded.length != 35 || versionByte != 0x30) return null;
+        if (decoded.length != 35 || versionByte != kVersionByteG) return null;
         return AddressKind.g;
       case 'M':
-        if (decoded.length != 43 || versionByte != 0x60) return null;
+        if (decoded.length != 43 || versionByte != kVersionByteM) return null;
         return AddressKind.m;
       case 'C':
-        if (decoded.length != 35 || versionByte != 0x10) return null;
+        // Contract addresses are structurally distinguished here by the
+        // dedicated C version byte; callers get an unambiguous AddressKind.c
+        // rather than having to infer it from the prefix alone.
+        if (decoded.length != 35 || versionByte != kVersionByteC) return null;
         return AddressKind.c;
       default:
         return null;

@@ -5,6 +5,10 @@ horizon:
 logging:
   level: "info"
   format: "json"
+retry:
+  max_attempts: 10
+  base_delay_seconds: 1
+  max_delay_seconds: 30
 metrics:
   enabled: true
   port: 9090

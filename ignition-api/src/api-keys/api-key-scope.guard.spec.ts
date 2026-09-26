@@ -1,7 +1,6 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ApiKeyScopeGuard } from './api-key-scope.guard';
-import { API_KEY_SCOPE_KEY } from './decorators/require-scope.decorator';
 
 const mockReflector = (scopes: string[] | undefined) =>
   ({
@@ -59,6 +58,24 @@ describe('ApiKeyScopeGuard', () => {
     expect(() => guard.canActivate(buildContext(undefined))).toThrow(
       ForbiddenException,
     );
+  });
+
+  it('error message includes required scope when no user is attached', () => {
+    const guard = new ApiKeyScopeGuard(mockReflector(['write']));
+    try {
+      guard.canActivate(buildContext(undefined));
+    } catch (err) {
+      expect((err as ForbiddenException).message).toContain('write');
+    }
+  });
+
+  it('error message includes required scope when user has no scope', () => {
+    const guard = new ApiKeyScopeGuard(mockReflector(['admin']));
+    try {
+      guard.canActivate(buildContext(null));
+    } catch (err) {
+      expect((err as ForbiddenException).message).toContain('admin');
+    }
   });
 
   it('error message includes key scope and required scope', () => {

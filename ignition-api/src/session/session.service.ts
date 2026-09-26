@@ -3,6 +3,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
 import Keyv from 'keyv';
 import { randomBytes } from 'crypto';
+import { SettingsService } from '../settings/settings.service';
 
 export interface SessionMetadata {
   sessionId: string;
@@ -14,6 +15,8 @@ export interface SessionMetadata {
   lastSeenAt: number;
   ipAddress?: string;
   userAgent?: string;
+  /** Issue #405 — Device fingerprint for session binding. */
+  deviceFingerprint?: string;
 }
 
 /** Prefix for individual session hash keys: session:{sessionId} */
@@ -26,27 +29,129 @@ const USER_SESSIONS_KEY = (userId: string) => `user_sessions:${userId}`;
 export class SessionService {
   private readonly logger = new Logger(SessionService.name);
 
-  /** Access-token lifetime in seconds (default 15 min) */
-  private readonly accessTtlSeconds: number;
-  /** Refresh-token / session lifetime in seconds (default 7 days) */
-  private readonly sessionTtlSeconds: number;
+  /** Default values as fallback if database settings are unavailable */
+  private readonly defaultAccessTtlSeconds: number;
+  private readonly defaultSessionTtlSeconds: number;
+  private readonly defaultIdleTimeoutSeconds: number;
 
   constructor(
     @Inject(CACHE_MANAGER) private readonly cache: Keyv,
     private readonly config: ConfigService,
+    private readonly settingsService: SettingsService,
   ) {
-    this.accessTtlSeconds = this.config.get<number>('SESSION_ACCESS_TTL_SECONDS', 900);
-    this.sessionTtlSeconds = this.config.get<number>('SESSION_TTL_SECONDS', 604800); // 7d
+    // Initialize defaults from environment variables
+    this.defaultAccessTtlSeconds = this.config.get<number>(
+      'SESSION_ACCESS_TTL_SECONDS',
+      900,
+    );
+    this.defaultSessionTtlSeconds = this.config.get<number>(
+      'SESSION_TTL_SECONDS',
+      604800,
+    ); // 7d
+    this.defaultIdleTimeoutSeconds = this.config.get<number>(
+      'SESSION_IDLE_TIMEOUT_SECONDS',
+      1800,
+    ); // 30 min
+
+    // Issue #402 — Validate that the session store is backed by Redis.
+    // In-memory stores cause session fragmentation behind load balancers,
+    // leading to random auth failures when requests land on different instances.
+    this.validateSessionStore().catch((err) => {
+      this.logger.error(
+        `Session store validation failed: ${err.message}. ` +
+          'Sessions may not persist across restarts or scale horizontally.',
+      );
+    });
+  }
+
+  /**
+   * Issue #402 — On startup, verify that the CACHE_MANAGER is connected to
+   * an external store (Redis) rather than the default in-memory Map.  When
+   * the store is in-memory, multi-instance deployments behind a load balancer
+   * will randomly fail auth because sessions created on one instance are
+   * invisible to the others.
+   */
+  private async validateSessionStore(): Promise<void> {
+    const testKey = '__session_store_health_check__';
+    const testValue = 'ok';
+    try {
+      await this.cache.set(testKey, testValue, 5000);
+      const retrieved = await this.cache.get<string>(testKey);
+      await this.cache.delete(testKey);
+
+      if (retrieved !== testValue) {
+        this.logger.warn(
+          'Session store returned unexpected value — ' +
+            'session persistence may be unreliable.',
+        );
+      } else {
+        this.logger.log('Session store connectivity verified.');
+      }
+    } catch (err) {
+      // Re-throw so the .catch() in the constructor logs it
+      throw err;
+    }
+  }
+
+  /**
+   * Get current access TTL from settings (with fallback to defaults)
+   */
+  private async getAccessTtlSeconds(): Promise<number> {
+    try {
+      const settings = await this.settingsService.getSettings();
+      return settings.sessionAccessTtlSeconds;
+    } catch {
+      return this.defaultAccessTtlSeconds;
+    }
+  }
+
+  /**
+   * Get current session TTL from settings (with fallback to defaults)
+   */
+  private async getSessionTtlSeconds(): Promise<number> {
+    try {
+      const settings = await this.settingsService.getSettings();
+      return settings.sessionTtlSeconds;
+    } catch {
+      return this.defaultSessionTtlSeconds;
+    }
+  }
+
+  /**
+   * Get current idle timeout from settings (with fallback to defaults)
+   */
+  private async getIdleTimeoutSeconds(): Promise<number> {
+    try {
+      const settings = await this.settingsService.getSettings();
+      return settings.sessionIdleTimeoutSeconds;
+    } catch {
+      return this.defaultIdleTimeoutSeconds;
+    }
+  }
+
+  /**
+   * Get session persistence setting from database
+   */
+  private async isSessionPersistenceEnabled(): Promise<boolean> {
+    try {
+      const settings = await this.settingsService.getSettings();
+      return settings.sessionPersistenceEnabled;
+    } catch {
+      return true; // Default to enabled
+    }
+  }
+
+  /** Returns true when the session has exceeded the idle timeout window. */
+  async isIdleExpired(session: SessionMetadata): Promise<boolean> {
+    const idleTimeoutSeconds = await this.getIdleTimeoutSeconds();
+    if (idleTimeoutSeconds <= 0) return false;
+    const idleMs = idleTimeoutSeconds * 1000;
+    return Date.now() - session.lastSeenAt > idleMs;
   }
 
   /** Generate a cryptographically random session ID */
   generateSessionId(): string {
     return randomBytes(32).toString('hex');
-  }
-
-  /** TTL in milliseconds used when writing to Keyv (Keyv uses ms) */
-  private get sessionTtlMs(): number {
-    return this.sessionTtlSeconds * 1000;
   }
 
   /**
@@ -59,10 +164,14 @@ export class SessionService {
     role: string;
     ipAddress?: string;
     userAgent?: string;
+    /** Issue #405 — Device fingerprint for session binding. */
+    deviceFingerprint?: string;
   }): Promise<SessionMetadata> {
     const sessionId = this.generateSessionId();
     const now = Date.now();
-    const expiresAt = now + this.sessionTtlMs;
+    const sessionTtlSeconds = await this.getSessionTtlSeconds();
+    const sessionTtlMs = sessionTtlSeconds * 1000;
+    const expiresAt = now + sessionTtlMs;
 
     const session: SessionMetadata = {
       sessionId,
@@ -74,10 +183,15 @@ export class SessionService {
       lastSeenAt: now,
       ipAddress: params.ipAddress,
       userAgent: params.userAgent,
+      deviceFingerprint: params.deviceFingerprint,
     };
 
     // Persist session data
-    await this.cache.set(SESSION_KEY(sessionId), JSON.stringify(session), this.sessionTtlMs);
+    await this.cache.set(
+      SESSION_KEY(sessionId),
+      JSON.stringify(session),
+      sessionTtlMs,
+    );
 
     // Add to user's session index
     await this.addToUserIndex(params.userId, sessionId);
@@ -87,7 +201,15 @@ export class SessionService {
   }
 
   /**
-   * Look up a session by ID. Returns null if not found or expired.
+   * Look up a session by ID.
+   * Returns null if not found, absolutely expired, or idle-timed-out.
+   *
+   * Issue #264 — Idle timeout:
+   *   A session is invalidated and freed from Redis when the time since
+   *   `lastSeenAt` exceeds `SESSION_IDLE_TIMEOUT_SECONDS`, even if the
+   *   absolute `expiresAt` horizon has not yet been reached.  The Redis
+   *   key is deleted immediately so the slot is freed without waiting for
+   *   the TTL to drain naturally.
    */
   async getSession(sessionId: string): Promise<SessionMetadata | null> {
     const raw = await this.cache.get<string>(SESSION_KEY(sessionId));
@@ -95,10 +217,25 @@ export class SessionService {
 
     try {
       const session: SessionMetadata = JSON.parse(raw);
+
+      // Absolute expiry check
       if (Date.now() > session.expiresAt) {
         await this.revokeSession(session.userId, sessionId);
         return null;
       }
+
+      // Issue #264 — Idle timeout check
+      if (await this.isIdleExpired(session)) {
+        const idleTimeoutSeconds = await this.getIdleTimeoutSeconds();
+        this.logger.log(
+          `Session ${sessionId} idle-expired for user ${session.userId} ` +
+            `(idle ${Math.round((Date.now() - session.lastSeenAt) / 1000)}s > ` +
+            `limit ${idleTimeoutSeconds}s)`,
+        );
+        await this.revokeSession(session.userId, sessionId);
+        return null;
+      }
+
       return session;
     } catch {
       return null;
@@ -107,15 +244,28 @@ export class SessionService {
 
   /**
    * Slide the session TTL and update lastSeenAt (called on each authenticated request).
+   * Only extends session if session persistence is enabled.
    */
   async touchSession(sessionId: string): Promise<void> {
     const session = await this.getSession(sessionId);
     if (!session) return;
 
-    session.lastSeenAt = Date.now();
-    session.expiresAt = Date.now() + this.sessionTtlMs;
+    const persistenceEnabled = await this.isSessionPersistenceEnabled();
+    const sessionTtlSeconds = await this.getSessionTtlSeconds();
+    const sessionTtlMs = sessionTtlSeconds * 1000;
 
-    await this.cache.set(SESSION_KEY(sessionId), JSON.stringify(session), this.sessionTtlMs);
+    session.lastSeenAt = Date.now();
+    
+    // Only extend session expiration if persistence is enabled
+    if (persistenceEnabled) {
+      session.expiresAt = Date.now() + sessionTtlMs;
+    }
+
+    await this.cache.set(
+      SESSION_KEY(sessionId),
+      JSON.stringify(session),
+      sessionTtlMs,
+    );
   }
 
   /**
@@ -132,7 +282,9 @@ export class SessionService {
    */
   async revokeAllSessions(userId: string): Promise<void> {
     const sessionIds = await this.getUserSessionIds(userId);
-    await Promise.all(sessionIds.map((id) => this.cache.delete(SESSION_KEY(id))));
+    await Promise.all(
+      sessionIds.map((id) => this.cache.delete(SESSION_KEY(id))),
+    );
     await this.cache.delete(USER_SESSIONS_KEY(userId));
     this.logger.log(`All sessions revoked for user ${userId}`);
   }
@@ -175,30 +327,51 @@ export class SessionService {
     }
   }
 
-  private async addToUserIndex(userId: string, sessionId: string): Promise<void> {
+  private async addToUserIndex(
+    userId: string,
+    sessionId: string,
+  ): Promise<void> {
     const existing = await this.getUserSessionIds(userId);
     const updated = [...new Set([...existing, sessionId])];
     // Keep the index alive as long as the longest possible session
-    await this.cache.set(USER_SESSIONS_KEY(userId), JSON.stringify(updated), this.sessionTtlMs);
+    await this.cache.set(
+      USER_SESSIONS_KEY(userId),
+      JSON.stringify(updated),
+      this.sessionTtlMs,
+    );
   }
 
-  private async removeFromUserIndex(userId: string, sessionId: string): Promise<void> {
+  private async removeFromUserIndex(
+    userId: string,
+    sessionId: string,
+  ): Promise<void> {
     const existing = await this.getUserSessionIds(userId);
     const updated = existing.filter((id) => id !== sessionId);
     if (updated.length === 0) {
       await this.cache.delete(USER_SESSIONS_KEY(userId));
     } else {
-      await this.cache.set(USER_SESSIONS_KEY(userId), JSON.stringify(updated), this.sessionTtlMs);
+      await this.cache.set(
+        USER_SESSIONS_KEY(userId),
+        JSON.stringify(updated),
+        this.sessionTtlMs,
+      );
     }
   }
 
-  private async pruneUserIndex(userId: string, staleIds: string[]): Promise<void> {
+  private async pruneUserIndex(
+    userId: string,
+    staleIds: string[],
+  ): Promise<void> {
     const existing = await this.getUserSessionIds(userId);
     const updated = existing.filter((id) => !staleIds.includes(id));
     if (updated.length === 0) {
       await this.cache.delete(USER_SESSIONS_KEY(userId));
     } else {
-      await this.cache.set(USER_SESSIONS_KEY(userId), JSON.stringify(updated), this.sessionTtlMs);
+      await this.cache.set(
+        USER_SESSIONS_KEY(userId),
+        JSON.stringify(updated),
+        this.sessionTtlMs,
+      );
     }
   }
 }

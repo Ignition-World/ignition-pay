@@ -4,7 +4,9 @@ export class AddressResponseDto {
   @ApiProperty({ description: 'Address ID' })
   id: string;
 
-  @ApiPropertyOptional({ description: 'Wallet ID this address is allocated to' })
+  @ApiPropertyOptional({
+    description: 'Wallet ID this address is allocated to',
+  })
   walletId?: string;
 
   @ApiProperty({ description: 'The deposit address string' })
@@ -19,7 +21,9 @@ export class AddressResponseDto {
   @ApiProperty({ description: 'Whether the address is active' })
   isActive: boolean;
 
-  @ApiPropertyOptional({ description: 'When the address was allocated to a wallet' })
+  @ApiPropertyOptional({
+    description: 'When the address was allocated to a wallet',
+  })
   allocatedAt?: Date;
 
   @ApiPropertyOptional({ description: 'Last activity timestamp' })

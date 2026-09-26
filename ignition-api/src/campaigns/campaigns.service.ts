@@ -2,7 +2,11 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
+import type { Queue } from 'bull';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import { Prisma } from '@prisma/client';
@@ -10,10 +14,150 @@ import {
   BrowseCampaignsQueryDto,
   BrowseCampaignsResponseDto,
 } from './dto/browse-campaigns.dto';
+import { QUEUE_EMAIL } from '../queue/queue.constants';
+import {
+  MILESTONE_JOB_COMPLETED,
+  MILESTONE_JOB_CAMPAIGN_COMPLETED,
+  MilestoneCompletedPayload,
+  CampaignCompletedPayload,
+} from '../queue/queue.jobs';
 
 @Injectable()
 export class CampaignsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(CampaignsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue(QUEUE_EMAIL) private readonly emailQueue: Queue,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Milestone completion (#256)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Mark a milestone as COMPLETED.
+   *
+   * Business rules:
+   * 1. The milestone must belong to the given campaign and not already be
+   *    COMPLETED or FAILED.
+   * 2. The requesting user must be the campaign creator.
+   * 3. When ALL milestones on the campaign are COMPLETED, the campaign itself
+   *    is also marked COMPLETED.
+   * 4. Non-blocking email notifications are dispatched after the DB writes
+   *    so that a delivery failure never rolls back the completion.
+   */
+  async completeMilestone(
+    userId: string,
+    campaignId: string,
+    milestoneId: string,
+  ) {
+    // 1. Load campaign + all milestones in one query to minimise round-trips
+    const campaign = await this.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        milestones: true,
+        creator: {
+          select: { id: true, email: true, displayName: true },
+        },
+      },
+    });
+
+    if (!campaign) {
+      throw new NotFoundException(`Campaign ${campaignId} not found`);
+    }
+
+    // 2. Authorisation – only the campaign creator may complete milestones
+    if (campaign.creatorId !== userId) {
+      throw new ForbiddenException(
+        'Only the campaign creator can complete milestones',
+      );
+    }
+
+    // 3. Locate the milestone
+    const milestone = campaign.milestones.find((m) => m.id === milestoneId);
+    if (!milestone) {
+      throw new NotFoundException(
+        `Milestone ${milestoneId} not found on campaign ${campaignId}`,
+      );
+    }
+
+    if (milestone.status === 'COMPLETED') {
+      throw new BadRequestException('Milestone is already completed');
+    }
+
+    if (milestone.status === 'FAILED') {
+      throw new BadRequestException('A failed milestone cannot be completed');
+    }
+
+    // 4. Mark milestone COMPLETED
+    const updatedMilestone = await this.prisma.milestone.update({
+      where: { id: milestoneId },
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date(),
+      },
+    });
+
+    // 5. Determine whether all milestones are now COMPLETED
+    const allDone = campaign.milestones.every(
+      (m) => m.id === milestoneId || m.status === 'COMPLETED',
+    );
+
+    let campaignCompleted = false;
+    if (allDone) {
+      await this.prisma.campaign.update({
+        where: { id: campaignId },
+        data: { status: 'COMPLETED' },
+      });
+      campaignCompleted = true;
+    }
+
+    // 6. Dispatch notifications (non-blocking – failure is logged, not thrown)
+    const creatorEmail = campaign.creator.email ?? '';
+    const creatorId = campaign.creator.id;
+
+    this.emailQueue
+      .add(MILESTONE_JOB_COMPLETED, {
+        creatorId,
+        creatorEmail,
+        campaignId,
+        campaignTitle: campaign.title,
+        milestoneId,
+        milestoneTitle: milestone.title,
+      } satisfies MilestoneCompletedPayload)
+      .catch((err: unknown) => {
+        this.logger.error(
+          `Failed to enqueue ${MILESTONE_JOB_COMPLETED} for milestone ${milestoneId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      });
+
+    if (campaignCompleted) {
+      this.emailQueue
+        .add(MILESTONE_JOB_CAMPAIGN_COMPLETED, {
+          creatorId,
+          creatorEmail,
+          campaignId,
+          campaignTitle: campaign.title,
+        } satisfies CampaignCompletedPayload)
+        .catch((err: unknown) => {
+          this.logger.error(
+            `Failed to enqueue ${MILESTONE_JOB_CAMPAIGN_COMPLETED} for campaign ${campaignId}`,
+            err instanceof Error ? err.stack : String(err),
+          );
+        });
+    }
+
+    return {
+      milestone: updatedMilestone,
+      campaignCompleted,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Existing methods (unchanged)
+  // ---------------------------------------------------------------------------
 
   async updateCampaign(
     userId: string,
@@ -21,7 +165,10 @@ export class CampaignsService {
     dto: UpdateCampaignDto,
   ) {
     const campaign = await this.prisma.campaign.findUnique({
-      where: { id: campaignId },
+      where: {
+        id: campaignId,
+        status: { notIn: ['CANCELLED', 'REJECTED', 'COMPLETED'] },
+      },
     });
 
     if (!campaign) {

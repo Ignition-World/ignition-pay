@@ -11,21 +11,31 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Safe BigInt Demo')),
-      body: isWide
-          ? Row(
-              children: const [
-                Expanded(child: UnsafePanel()),
-                VerticalDivider(),
-                Expanded(child: SafePanel()),
-              ],
-            )
-          : ListView(
-              children: const [
-                UnsafePanel(),
-                Divider(),
-                SafePanel(),
-              ],
-            ),
+      body: RefreshIndicator(
+        onRefresh: () async {},
+        child: isWide
+            ? SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height),
+                  child: Row(
+                    children: const [
+                      Expanded(child: UnsafePanel()),
+                      VerticalDivider(),
+                      Expanded(child: SafePanel()),
+                    ],
+                  ),
+                ),
+              )
+            : ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  UnsafePanel(),
+                  Divider(),
+                  SafePanel(),
+                ],
+              ),
+      ),
     );
   }
 }

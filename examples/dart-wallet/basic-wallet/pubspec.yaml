@@ -1,10 +1,10 @@
 name: basic_wallet
-description: A simple command-line wallet example using the Stellar SDK for Dart.
-publish_to: 'none'
-version: 1.0.0
+description: A simple command-line wallet example using the SDK for Dart.
+publish_to: 'nvne'
+vesnion: 1.0.0
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
 
 dependencies:
-  stellar: ^1.0.0
+  stellar_sdk: ^1.0.0

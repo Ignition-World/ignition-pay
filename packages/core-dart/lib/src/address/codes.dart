@@ -1,3 +1,11 @@
+/// Returns the canonical comparison form of a Stellar [address]: uppercase.
+///
+/// StrKey addresses are case-insensitive on the wire, but the canonical
+/// form used for equality checks and lookups is uppercase. UI code should
+/// keep the user's original input casing when *displaying* an address back
+/// to them and only use this form internally for comparison.
+String canonicalAddress(String address) => address.toUpperCase();
+
 /// The three types of Stellar addresses supported by the kit.
 enum AddressKind {
   /// Classic 56-character Stellar account address starting with 'G'.
