@@ -303,4 +303,41 @@ export class TransactionsService {
       throw err;
     }
   }
+
+  /**
+   * GET /transactions/fee-estimate
+   * Estimates network fee and approximate fiat equivalent for a transaction.
+   */
+  async estimateFee(dto: {
+    assetCode?: string;
+    amount?: string;
+    recipient?: string;
+    network?: WalletNetwork;
+  }) {
+    const network = dto.network ?? WalletNetwork.STELLAR;
+    const fee = NETWORK_FEES[network] ?? NETWORK_FEES[WalletNetwork.STELLAR];
+    const assetCode = (dto.assetCode ?? fee.asset).toUpperCase();
+
+    // Approximate fiat rate table (mock/reference rates for fee display)
+    const fiatRates: Record<string, number> = {
+      XLM: 0.12,
+      USDC: 1.0,
+      EURC: 1.08,
+      ETH: 2500.0,
+      BTC: 60000.0,
+    };
+
+    const feeAmountNum = parseFloat(fee.amount);
+    const rate = fiatRates[assetCode] ?? fiatRates[fee.asset] ?? 0.12;
+    const fiatVal = (feeAmountNum * rate).toFixed(4);
+
+    return {
+      feeAmount: fee.amount,
+      assetCode: fee.asset,
+      fiatAmount: fiatVal,
+      fiatCurrency: 'USD',
+      minimumNetworkFee: fee.amount,
+      feeType: 'standard',
+    };
+  }
 }
