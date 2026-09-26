@@ -6,6 +6,8 @@ import 'package:flutter/scheduler.dart';
 
 import 'core/design_system/design_system.dart';
 import 'core/push_notification_service.dart';
+import 'features/auth/services/biometric_services.dart';
+import 'features/auth/widgets/biometric_gate.dart';
 import 'router/app_router.dart';
 
 class IgnitionPayApp extends StatefulWidget {
@@ -52,7 +54,10 @@ class _IgnitionPayAppState extends State<IgnitionPayApp> {
             systemNavigationBarIconBrightness:
                 isDark ? Brightness.light : Brightness.dark,
           ),
-          child: child ?? const SizedBox.shrink(),
+          child: BiometricGate(
+            biometricService: BiometricServices.service,
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
     );
