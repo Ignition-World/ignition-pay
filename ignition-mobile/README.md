@@ -46,3 +46,5 @@ For App Store Connect and Google Play Console preparation, see [docs/STORE_SETUP
 ## Testing
 
 For Flutter unit and widget testing conventions, see [docs/TESTING.md](docs/TESTING.md). A minimal smoke test is available at [test/widget_smoke_test.dart](test/widget_smoke_test.dart).
+
+For the app start-up sequence and how to measure it on a device, see [docs/STARTUP_PERFORMANCE.md](docs/STARTUP_PERFORMANCE.md).
