@@ -2,12 +2,21 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DashboardPage } from '../features/dashboard/widgets/DashboardPage'
 import { parseWalletSnapshot } from '../features/dashboard/services'
+import { LanguageProvider } from '../lib/i18n'
+
+function renderDashboard() {
+  return render(
+    <LanguageProvider>
+      <DashboardPage />
+    </LanguageProvider>,
+  )
+}
 
 describe('DashboardPage', () => {
   afterEach(cleanup)
 
   it('groups balances by asset kind and renders a card per asset', async () => {
-    render(<DashboardPage />)
+    renderDashboard()
 
     await waitFor(() => expect(screen.getByText('Native')).toBeInTheDocument())
 
@@ -19,14 +28,14 @@ describe('DashboardPage', () => {
   })
 
   it('exposes a refresh control and the last-updated time', async () => {
-    render(<DashboardPage />)
+    renderDashboard()
 
     await waitFor(() => expect(screen.getByText(/Updated/)).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /Refresh/i })).toBeEnabled()
   })
 
   it('draws a sparkline for each asset with value history', async () => {
-    render(<DashboardPage />)
+    renderDashboard()
 
     await waitFor(() =>
       expect(screen.getByRole('img', { name: /XLM value over the last 7 days/ })).toBeInTheDocument(),

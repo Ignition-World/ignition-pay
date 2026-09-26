@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import {
-  Bell,
   Lock,
   User,
   Eye,
@@ -26,6 +25,7 @@ import { updateProfile } from '../services'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useTheme } from '@/hooks/use-theme'
 import { ApiKeysSection } from './ApiKeysSection'
+import { NotificationSettings } from './NotificationSettings'
 
 import { useTranslation, type SupportedLocale } from '@/lib/i18n'
 
@@ -35,12 +35,6 @@ export function SettingsPage() {
   const [copied, setCopied] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
-  const [notifications, setNotifications] = useState({
-    payments: true,
-    anchors: true,
-    security: true,
-    news: false,
-  })
   const { consented, setConsented } = useAnalyticsConsent()
   const { mode, setMode } = useTheme()
   const [sessions] = useState([
@@ -277,65 +271,7 @@ export function SettingsPage() {
         <ApiKeysSection />
 
         {/* Notifications Section */}
-        <div className="bg-card rounded-xl border border-border p-8 space-y-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-              <Bell size={20} className="text-blue-500" />
-            </div>
-            <h2 className="text-xl font-bold text-foreground">Notifications</h2>
-          </div>
-
-          <div className="space-y-4">
-            {Object.entries(notifications).map(([key, value]) => (
-              <div
-                key={key}
-                className="flex items-center justify-between py-4 border-b border-border last:border-b-0"
-              >
-                <div>
-                  <p className="font-semibold text-foreground capitalize">
-                    {key === 'payments'
-                      ? 'Payment Alerts'
-                      : key === 'anchors'
-                        ? 'Anchor Updates'
-                        : key === 'security'
-                          ? 'Security Alerts'
-                          : 'News & Updates'}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {key === 'payments'
-                      ? 'Notify when you send or receive payments'
-                      : key === 'anchors'
-                        ? 'Notify when anchors go online/offline'
-                        : key === 'security'
-                          ? 'Notify about suspicious activity'
-                          : 'Notify about Ignition Pay updates'}
-                  </p>
-                </div>
-
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={value}
-                    onChange={() => {
-                      const next = { ...notifications, [key]: !value }
-                      setNotifications(next)
-                      save({
-                        ...preferences,
-                        notifications: {
-                          email: next.payments,
-                          push: next.security,
-                          sms: next.anchors,
-                        },
-                      })
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-muted peer-checked:bg-primary rounded-full peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all" />
-                </label>
-              </div>
-            ))}
-          </div>
-        </div>
+        <NotificationSettings />
 
         {/* Privacy Section */}
         <div className="bg-card rounded-xl border border-border p-8 space-y-6">
@@ -365,7 +301,7 @@ export function SettingsPage() {
                   onChange={() => setConsented(!consented)}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-muted peer-checked:bg-primary rounded-full peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all" />
+                <div className="w-11 h-6 bg-muted peer-checked:bg-primary rounded-full peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all" />
               </label>
             </div>
           </div>
