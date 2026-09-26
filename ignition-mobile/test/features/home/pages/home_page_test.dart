@@ -139,11 +139,18 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   }
 
+  /// Advances past the skeleton's 300ms minimum window so first-paint tests
+  /// observe the loaded page instead of [HomeSkeleton].
+  Future<void> dismissSkeleton(WidgetTester tester) async {
+    await tester.pump(const Duration(milliseconds: 350));
+  }
+
   testWidgets(
       'pull-to-refresh reloads balances, transactions and notifications',
       (tester) async {
     await tester.pumpWidget(buildHome());
     await tester.pump();
+    await dismissSkeleton(tester);
 
     // Launch reads only the cache — no network requests yet.
     expect(dataSource.balanceFetches, 0);
@@ -176,6 +183,7 @@ void main() {
 
     await tester.pumpWidget(buildHome());
     await tester.pump();
+    await dismissSkeleton(tester);
     expect(find.text('10.00'), findsOneWidget);
 
     await pullDown(tester);
@@ -202,6 +210,7 @@ void main() {
 
     await tester.pumpWidget(buildHome());
     await tester.pump();
+    await dismissSkeleton(tester);
 
     await pullDown(tester);
     await tester.pumpAndSettle();

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,11 @@ import '../../../core/local/balance_cache.dart';
 import '../../../core/network/api_exception.dart';
 
 /// Home dashboard with pull-to-refresh.
+///
+/// While the first load runs, the page body shows a [HomeSkeleton] instead
+/// of a blank screen. The skeleton stays up for at least 300ms so a fast
+/// response doesn't cause a flash, and is replaced by real data (or an error
+/// banner with Retry) as soon as both conditions hold.
 ///
 /// Pulling down reloads balances, recent transactions and unread
 /// notifications through [HomeDataSource]. Existing data stays on screen for
@@ -62,9 +69,28 @@ class _HomePageState extends State<HomePage> {
   /// Non-null when the most recent fetch failed.
   ApiException? _error;
 
+  /// Whether the first load (cache read + optional initial fetch) finished.
+  bool _initialLoadDone = false;
+
+  /// Whether the 300ms minimum skeleton window elapsed.
+  bool _minSkeletonElapsed = false;
+
+  /// True until the skeleton is dismissed in favour of real content.
+  bool _showingSkeleton = true;
+
+  Timer? _skeletonMinTimer;
+
+  /// Acceptance criterion: the skeleton must not flash away faster than
+  /// 300ms, otherwise a slow first frame reads as a flicker.
+  static const Duration _minSkeletonDuration = Duration(milliseconds: 300);
+
   @override
   void initState() {
     super.initState();
+    _skeletonMinTimer = Timer(_minSkeletonDuration, () {
+      _minSkeletonElapsed = true;
+      _dismissSkeletonIfReady();
+    });
     _loadInitialBalances();
   }
 
@@ -79,8 +105,8 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
     setState(() => _cached = cached);
 
-    final fetchBalances = widget.fetchBalances;
-    if (fetchBalances == null) return;
+      final fetchBalances = widget.fetchBalances;
+      if (fetchBalances == null) return;
 
     if (mounted) {
       setState(() {
@@ -113,6 +139,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    _skeletonMinTimer?.cancel();
     if (_ownsCache) _cache.close();
     super.dispose();
   }
@@ -227,6 +254,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<Widget> _buildSections() {
+    if (_showingSkeleton) return const [HomeSkeleton()];
+
     return [
       if (_error != null) ...[
         AppErrorBanner(message: _error!),
