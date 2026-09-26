@@ -22,6 +22,7 @@ import { SessionService } from '../session/session.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserProfileDto, PublicUserProfileDto } from './dto/user-profile.dto';
 import { UserDashboardDto } from './dto/dashboard.dto';
+import { DashboardCacheService } from './dashboard-cache.service';
 import { assertStrongPassword } from './password-policy';
 
 interface PasswordSetupInput {
@@ -62,6 +63,7 @@ export class UsersService {
     private readonly config: ConfigService,
     @Inject(CACHE_MANAGER) private readonly cache: Keyv,
     private readonly sessionService: SessionService,
+    private readonly dashboardCache: DashboardCacheService,
   ) {}
 
   /**
@@ -112,6 +114,11 @@ export class UsersService {
    * transactions, unread notifications and active campaigns in a single
    * $transaction with parallel, selectively-projected queries instead of
    * six sequential round trips.
+   *
+   * Issue #591 — the aggregated payload is served from the warmed cache when
+   * available. On a cache miss (cold start, eviction, invalidation) we fall
+   * back to live computation and repopulate the cache, so there is no
+   * downtime and no user-visible error.
    */
   async getDashboard(walletAddress: string): Promise<UserDashboardDto> {
     const user = await this.prisma.user.findFirst({
@@ -123,10 +130,25 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    const cached = await this.dashboardCache.get(user.id);
+    if (cached) {
+      return cached;
+    }
+
+    const dashboard = await this.computeDashboard(user.id);
+    await this.dashboardCache.set(user.id, dashboard);
+    return dashboard;
+  }
+
+  /**
+   * Live dashboard computation used on cache miss and by the scheduled
+   * cache-warming job.
+   */
+  async computeDashboard(userId: string): Promise<UserDashboardDto> {
     const [profile, wallets, recentTransactions, unreadNotifications, activeCampaigns] =
       await this.prisma.$transaction([
         this.prisma.user.findUniqueOrThrow({
-          where: { id: user.id },
+          where: { id: userId },
           select: {
             id: true,
             email: true,
@@ -137,14 +159,14 @@ export class UsersService {
           },
         }),
         this.prisma.wallet.findMany({
-          where: { userId: user.id, deletedAt: null },
+          where: { userId, deletedAt: null },
           select: { id: true, network: true, balance: true, currency: true, status: true },
         }),
         this.prisma.transaction.findMany({
           where: {
             OR: [
-              { fromWallet: { userId: user.id } },
-              { toWallet: { userId: user.id } },
+              { fromWallet: { userId } },
+              { toWallet: { userId } },
             ],
           },
           select: { id: true, amount: true, assetCode: true, status: true, createdAt: true },
@@ -152,13 +174,13 @@ export class UsersService {
           take: 10,
         }),
         this.prisma.notification.findMany({
-          where: { userId: user.id, isRead: false },
+          where: { userId, isRead: false },
           select: { id: true, type: true, title: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
           take: 10,
         }),
         this.prisma.campaign.findMany({
-          where: { creatorId: user.id, status: 'ACTIVE' },
+          where: { creatorId: userId, status: 'ACTIVE' },
           select: { id: true, title: true, goalAmount: true, raisedAmount: true },
         }),
       ]);

@@ -77,3 +77,22 @@ export interface CampaignCompletedPayload {
   campaignId: string;
   campaignTitle: string;
 }
+// ---------------------------------------------------------------------------
+// Dashboard cache warming — Issue #591
+// ---------------------------------------------------------------------------
+
+/** Job name: warm the cached dashboard payload for a single user */
+export const DASHBOARD_JOB_WARM = 'warm-dashboard';
+
+/** Job name: invalidate the cached dashboard payload for a single user */
+export const DASHBOARD_JOB_INVALIDATE = 'invalidate-dashboard';
+
+export interface DashboardWarmPayload {
+  /** Internal User.id (UUID) */
+  userId: string;
+}
+
+export interface DashboardInvalidatePayload {
+  /** Internal User.id (UUID) */
+  userId: string;
+}
