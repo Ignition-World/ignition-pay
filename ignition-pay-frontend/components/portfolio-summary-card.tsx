@@ -57,7 +57,10 @@ export function PortfolioSummaryCard({
   const isPositive = change24h >= 0
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-card to-card border border-primary/30 p-8 shadow-lg">
+    <div
+      data-tour="balance"
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-card to-card border border-primary/30 p-8 shadow-lg"
+    >
       {/* Decorative background elements */}
       <div className="absolute top-0 right-0 w-40 h-40 bg-primary/5 rounded-full -mr-20 -mt-20" />
       <div className="absolute bottom-0 left-0 w-32 h-32 bg-primary/5 rounded-full -ml-16 -mb-16" />
