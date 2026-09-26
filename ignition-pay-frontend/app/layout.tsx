@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ConsentGate } from '@/components/consent-gate'
 import { ToastProvider, Toaster } from '@/components/ui/toast'
+import { LanguageProvider } from '@/lib/i18n'
+import { themeBootstrapScript } from '@/lib/theme'
 import './globals.css'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
@@ -33,30 +35,7 @@ export const metadata: Metadata = {
   },
 }
 
-const themeInitScript = `
-(function(){
-  try {
-    var root = document.documentElement;
-    var stored = localStorage.getItem('theme');
-    var mode = stored || 'system';
-    var resolved;
-    if (mode === 'system') {
-      resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    } else {
-      resolved = mode;
-    }
-    root.classList.toggle('dark', resolved === 'dark');
-    root.style.colorScheme = resolved;
 
-    var contrastStored = localStorage.getItem('contrast');
-    if (contrastStored === 'high') {
-      root.classList.add('high-contrast');
-    }
-  } catch(e) {}
-})();
-`
-
-import { LanguageProvider } from '@/lib/i18n'
 
 export default function RootLayout({
   children,
@@ -66,20 +45,30 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
       </head>
       <body className="font-sans antialiased bg-background text-foreground">
+        {/*
+          Issue #627 — the page tree was rendered three times here: once inside
+          LanguageProvider, once inside ToastProvider, and once bare, with
+          ConsentGate mounted three times alongside it. A merge artifact.
+
+          Beyond rendering everything in triplicate, it broke both providers. The
+          first copy had no ToastProvider ancestor, so any component calling
+          useToast() inside it threw "useToastManager must be used within
+          <Toast.Provider>"; the second and third copies had no LanguageProvider,
+          so translations fell back. It also tripled the number of useTheme
+          consumers, which is what made the theme bug so easy to hit.
+
+          One tree, both providers wrapping it, one ConsentGate.
+        */}
         <LanguageProvider>
-          {children}
-          {process.env.NODE_ENV === 'production' && <ConsentGate />}
+          <ToastProvider>
+            {children}
+            <Toaster />
+            {process.env.NODE_ENV === 'production' && <ConsentGate />}
+          </ToastProvider>
         </LanguageProvider>
-        <ToastProvider>
-          {children}
-          <Toaster />
-        </ToastProvider>
-        {process.env.NODE_ENV === 'production' && <ConsentGate />}
-        {children}
-        <ConsentGate />
       </body>
     </html>
   )

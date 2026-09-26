@@ -206,3 +206,36 @@ export function getStoredContrast(): ContrastLevel {
 export function storeContrast(contrast: ContrastLevel): void {
   localStorage.setItem('contrast', contrast)
 }
+
+/**
+ * Blocking script that applies the stored theme before React runs (issue #627).
+ *
+ * Injected into `<head>` by the root layout. Without it the first paint uses
+ * whatever the server rendered — no `dark` class — so a dark-mode user sees a
+ * flash of light content before hydration applies their preference.
+ *
+ * Lives here rather than inline in the layout so the logic that decides the first
+ * paint is unit-testable, and so it sits next to the storage helpers it has to
+ * agree with. If the storage keys below drift from `getStoredTheme` /
+ * `getStoredContrast`, the flash comes back.
+ */
+export const themeBootstrapScript = `
+(function(){
+  try {
+    var root = document.documentElement;
+    var stored = localStorage.getItem('theme');
+    var mode = stored || 'system';
+    var resolved;
+    if (mode === 'system') {
+      resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } else {
+      resolved = mode;
+    }
+    root.classList.toggle('dark', resolved === 'dark');
+    root.style.colorScheme = resolved;
+
+    var contrastStored = localStorage.getItem('contrast');
+    root.classList.toggle('high-contrast', contrastStored === 'high');
+  } catch(e) {}
+})();
+`
