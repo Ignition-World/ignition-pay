@@ -12,6 +12,7 @@ import { ApiKeyScopeGuard } from '../api-keys/api-key-scope.guard';
 import { ApiKeyExpirationService } from '../api-keys/api-key-expiration.service';
 import { TransactionsController } from './transactions.controller';
 import { TransactionsService } from './transactions.service';
+import { IdempotencyService } from './idempotency.service';
 import { StaleTransactionMonitorService } from './stale-transaction-monitor.service';
 import { QUEUE_EMAIL, QUEUE_HORIZON } from '../queue/queue.constants';
 
@@ -33,6 +34,7 @@ import { QUEUE_EMAIL, QUEUE_HORIZON } from '../queue/queue.constants';
   controllers: [TransactionsController],
   providers: [
     TransactionsService,
+    IdempotencyService,
     JwtAuthGuard,
     PermissionsService,
     PermissionsGuard,

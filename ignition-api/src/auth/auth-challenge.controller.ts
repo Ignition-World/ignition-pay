@@ -41,7 +41,13 @@ export class AuthChallengeController {
    */
   @Get('challenge')
   @Throttle({ strict: { limit: 3, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Get authentication challenge for wallet address' })
+  @ApiOperation({
+    summary: 'Get authentication challenge for wallet address',
+    description:
+      'First step of the SEP-10 wallet login flow. Returns the challenge text to be signed by ' +
+      'the wallet and posted back to POST /auth/verify. Unauthenticated, and rate limited to 3 ' +
+      'requests per minute per IP to prevent wallet-address enumeration.',
+  })
   @ApiResponse({ status: 200, description: 'Returns challenge string' })
   @ApiResponse({
     status: 400,
@@ -78,7 +84,7 @@ export class AuthChallengeController {
       'or issues a new one if within AUTH_CHALLENGE_REFRESH_WINDOW_MS of expiry.',
   })
   @ApiResponse({ status: 200, description: 'Returns (possibly refreshed) challenge and expiry', type: ChallengeResponse })
-  @ApiResponse({ status: 400, description: 'Invalid Stellar wallet address' })
+  @ApiResponse({ status: 400, description: 'Invalid Stellar wallet address', type: AuthErrorResponseDto })
   @ApiResponse({ status: 429, description: 'Too many requests — rate limit exceeded' })
   async refreshChallenge(
     @Query() query: ChallengeQueryDto,

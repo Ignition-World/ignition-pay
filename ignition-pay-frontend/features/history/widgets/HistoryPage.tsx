@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useCallback, useRef, useState } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Download, Search } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -8,22 +9,51 @@ import { TransactionRow } from '@/components/transaction-row'
 import { useOptimisticTransactions } from '@/features/history/state'
 import { fetchTransactions } from '@/features/history/services'
 import type { Transaction, OptimisticTransaction } from '@/features/history/models'
+import {
+  HISTORY_DATE_PRESETS,
+  HISTORY_DIRECTION_FILTERS,
+  HISTORY_STATUS_FILTERS,
+  availableAssets,
+  hasActiveFilters,
+  parseHistoryFilters,
+  resolveDateRange,
+  serialiseHistoryFilters,
+  type HistoryFilters,
+} from '@/features/history/filters'
 import { useToast } from '@/components/ui/toast'
 
 const PAGE_SIZE = 10
-const STATUS_OPTIONS = ['all', 'confirmed', 'pending'] as const
-type StatusOption = (typeof STATUS_OPTIONS)[number]
 
+/**
+ * Free-text search is debounced before it reaches the URL: the query string is
+ * now the single source of truth, so writing to it on every keystroke would
+ * push a navigation and a refetch per character.
+ */
+const SEARCH_DEBOUNCE_MS = 300
+
+/**
+ * The active filters live in the URL query string rather than in component
+ * state, so a filtered view is shareable and survives a reload. This component
+ * must therefore be rendered inside a Suspense boundary — see
+ * `app/history/page.tsx`, which `useSearchParams` requires for statically
+ * rendered routes.
+ */
 export function HistoryPage() {
   const { optimisticEntries } = useOptimisticTransactions()
   const toast = useToast()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
 
-  const [filterType, setFilterType] = useState<'all' | 'sent' | 'received'>('all')
-  const [filterAsset, setFilterAsset] = useState<string>('all')
-  const [filterStatus, setFilterStatus] = useState<StatusOption>('all')
-  const [dateFrom, setDateFrom] = useState<string>('')
-  const [dateTo, setDateTo] = useState<string>('')
-  const [searchTerm, setSearchTerm] = useState('')
+  const filters = useMemo(
+    () => parseHistoryFilters(searchParams),
+    [searchParams],
+  )
+  /** Stable identity for effect dependencies and for the shareable URL. */
+  const queryString = useMemo(
+    () => serialiseHistoryFilters(filters),
+    [filters],
+  )
 
   // Server-side pagination state
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -33,24 +63,72 @@ export function HistoryPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
+  /**
+   * Held only while the user is actively typing. `null` means "defer to the
+   * URL", which is the case for every other source of filter changes.
+   */
+  const [searchDraft, setSearchDraft] = useState<string | null>(null)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Stats derived from all loaded pages (server gives us what it can)
   const [stats, setStats] = useState({ total: 0, sent: 0, received: 0, totalVolume: 0 })
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  useEffect(
+    () => () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    },
+    [],
+  )
+
   /**
-   * Translate the UI filter state into fetchTransactions arguments.
+   * Write a filter change into the URL. Every filter goes through here, which
+   * is what makes the view shareable — the query string is the only state.
    */
-  const buildQueryArgs = useCallback(() => ({
-    limit: PAGE_SIZE,
-    status: filterStatus !== 'all' ? filterStatus.toUpperCase() : undefined,
-    asset: filterAsset !== 'all' ? filterAsset : undefined,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
-    search: searchTerm || undefined,
-    type: filterType !== 'all' ? filterType : undefined,
-  }), [filterType, filterAsset, filterStatus, dateFrom, dateTo, searchTerm])
+  const applyFilters = useCallback(
+    (patch: Partial<HistoryFilters>) => {
+      const next = serialiseHistoryFilters({ ...filters, ...patch })
+      router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false })
+    },
+    [filters, pathname, router],
+  )
+
+  const searchValue = searchDraft ?? filters.search
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchDraft(value)
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+      searchTimerRef.current = setTimeout(() => {
+        searchTimerRef.current = null
+        setSearchDraft(null)
+        applyFilters({ search: value })
+      }, SEARCH_DEBOUNCE_MS)
+    },
+    [applyFilters],
+  )
+
+  /**
+   * Translate the URL filters into fetchTransactions arguments, reusing the
+   * service's existing options.
+   */
+  const buildQueryArgs = useCallback(
+    () => {
+      const { dateFrom, dateTo } = resolveDateRange(filters)
+      return {
+        limit: PAGE_SIZE,
+        status: filters.status !== 'all' ? filters.status : undefined,
+        asset: filters.asset !== 'all' ? filters.asset : undefined,
+        dateFrom,
+        dateTo,
+        search: filters.search || undefined,
+        type: filters.direction !== 'all' ? filters.direction : undefined,
+      }
+    },
+    [filters],
+  )
 
   /**
    * Load the first page. Replaces any previously loaded transactions.
@@ -114,11 +192,11 @@ export function HistoryPage() {
     }
   }, [buildQueryArgs, nextCursor, isLoadingMore, toast])
 
-  // Reload from page 1 whenever filters change
+  // Reload from page 1 whenever the filter query string changes
   useEffect(() => {
     loadFirstPage()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterType, filterAsset, filterStatus, dateFrom, dateTo, searchTerm])
+  }, [queryString])
 
   // Recompute stats whenever the loaded transaction list changes
   useEffect(() => {
@@ -146,22 +224,25 @@ export function HistoryPage() {
     return () => observer.disconnect()
   }, [hasMore, loadNextPage])
 
-  const hasActiveFilters =
-    filterType !== 'all' ||
-    filterAsset !== 'all' ||
-    filterStatus !== 'all' ||
-    dateFrom !== '' ||
-    dateTo !== '' ||
-    searchTerm !== ''
+  const filtersAreActive = hasActiveFilters(filters)
 
   function clearFilters() {
-    setFilterType('all')
-    setFilterAsset('all')
-    setFilterStatus('all')
-    setDateFrom('')
-    setDateTo('')
-    setSearchTerm('')
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current)
+      searchTimerRef.current = null
+    }
+    setSearchDraft(null)
+    router.replace(pathname, { scroll: false })
   }
+
+  /**
+   * Only offer assets that actually occur in the loaded history, otherwise the
+   * dropdown would list codes that can never match a result.
+   */
+  const assetOptions = useMemo(
+    () => availableAssets(transactions, filters.asset),
+    [transactions, filters.asset],
+  )
 
   /**
    * Merges optimistic pending entries with real server data.
@@ -248,7 +329,7 @@ export function HistoryPage() {
       <div className="border-b border-border bg-card/30 backdrop-blur-sm">
         <div className="px-6 py-4 max-w-7xl mx-auto space-y-3">
 
-          {/* Row 1: search + export */}
+          {/* Row 1: search + asset + export */}
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex-1 min-w-64">
               <div className="relative">
@@ -259,23 +340,25 @@ export function HistoryPage() {
                 <input
                   type="text"
                   placeholder="Search by address, asset, or tx hash…"
+                  aria-label="Search transactions"
                   className="w-full pl-10 pr-4 py-2 rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={searchValue}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* Asset dropdown */}
+            {/* Asset dropdown — options come from the loaded history */}
             <select
               aria-label="Filter by asset"
               className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:border-primary"
-              value={filterAsset}
-              onChange={(e) => setFilterAsset(e.target.value)}
+              value={filters.asset}
+              onChange={(e) => applyFilters({ asset: e.target.value })}
             >
-              {['all', 'XLM', 'USDC', 'AQUA'].map((a) => (
-                <option key={a} value={a}>
-                  {a === 'all' ? 'All assets' : a}
+              <option value="all">All assets</option>
+              {assetOptions.map((asset) => (
+                <option key={asset} value={asset}>
+                  {asset}
                 </option>
               ))}
             </select>
@@ -290,34 +373,58 @@ export function HistoryPage() {
           <div className="flex items-center gap-4 flex-wrap">
             {/* Direction chips */}
             <div className="flex gap-2" role="group" aria-label="Filter by direction">
-              {(['all', 'sent', 'received'] as const).map((d) => (
+              {HISTORY_DIRECTION_FILTERS.map((d) => (
                 <Button
-                  key={d}
-                  variant={filterType === d ? 'default' : 'outline'}
-                  onClick={() => setFilterType(d)}
+                  key={d.value}
+                  variant={filters.direction === d.value ? 'default' : 'outline'}
+                  aria-pressed={filters.direction === d.value}
+                  onClick={() => applyFilters({ direction: d.value })}
                   size="sm"
                 >
-                  {d.charAt(0).toUpperCase() + d.slice(1)}
+                  {d.label}
                 </Button>
               ))}
             </div>
 
-            {/* Status chips */}
+            {/* Status chips — values are the statuses the API accepts */}
             <div className="flex gap-2" role="group" aria-label="Filter by status">
-              {STATUS_OPTIONS.map((s) => (
+              {HISTORY_STATUS_FILTERS.map((s) => (
                 <Button
-                  key={s}
-                  variant={filterStatus === s ? 'default' : 'outline'}
-                  onClick={() => setFilterStatus(s)}
+                  key={s.value}
+                  variant={filters.status === s.value ? 'default' : 'outline'}
+                  aria-pressed={filters.status === s.value}
+                  onClick={() => applyFilters({ status: s.value })}
                   size="sm"
                 >
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                  {s.label}
                 </Button>
               ))}
             </div>
 
             {/* Date range */}
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-2 ml-auto flex-wrap">
+              <label className="text-xs text-muted-foreground whitespace-nowrap" htmlFor="date-range">
+                Range
+              </label>
+              <select
+                id="date-range"
+                className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:border-primary"
+                value={filters.range}
+                onChange={(e) =>
+                  applyFilters({
+                    range: e.target.value as HistoryFilters['range'],
+                    // A preset supersedes any custom bounds.
+                    from: '',
+                    to: '',
+                  })
+                }
+              >
+                {HISTORY_DATE_PRESETS.map((preset) => (
+                  <option key={preset.value} value={preset.value}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
               <label className="text-xs text-muted-foreground whitespace-nowrap" htmlFor="date-from">
                 From
               </label>
@@ -325,9 +432,9 @@ export function HistoryPage() {
                 id="date-from"
                 type="date"
                 className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:border-primary"
-                value={dateFrom}
-                max={dateTo || undefined}
-                onChange={(e) => setDateFrom(e.target.value)}
+                value={filters.from}
+                max={filters.to || undefined}
+                onChange={(e) => applyFilters({ from: e.target.value, range: 'custom' })}
               />
               <label className="text-xs text-muted-foreground whitespace-nowrap" htmlFor="date-to">
                 To
@@ -336,11 +443,11 @@ export function HistoryPage() {
                 id="date-to"
                 type="date"
                 className="h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:border-primary"
-                value={dateTo}
-                min={dateFrom || undefined}
-                onChange={(e) => setDateTo(e.target.value)}
+                value={filters.to}
+                min={filters.from || undefined}
+                onChange={(e) => applyFilters({ to: e.target.value, range: 'custom' })}
               />
-              {hasActiveFilters && (
+              {filtersAreActive && (
                 <Button variant="ghost" size="sm" onClick={clearFilters}>
                   Clear filters
                 </Button>
