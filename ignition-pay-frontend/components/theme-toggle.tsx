@@ -63,6 +63,7 @@ export function ThemeToggle() {
       role="radiogroup"
       aria-label="Theme selector"
       aria-orientation="horizontal"
+      data-tour="appearance"
       className="inline-flex h-9 items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5 shadow-sm"
     >
       {modes.map((m) => {
