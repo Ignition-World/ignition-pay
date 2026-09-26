@@ -6,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 
 import 'bootstrap/lazy_firebase.dart';
+import 'push_notification_dedup.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -35,6 +36,9 @@ class PushNotificationService {
   late final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+
+  /// Bounded dedup window for redelivered messages (#685).
+  final PushNotificationDedup _dedup = PushNotificationDedup();
 
   static bool _backgroundHandlerRegistered = false;
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
@@ -108,19 +112,18 @@ class PushNotificationService {
     try {
       // Keep ownership of both subscriptions so app teardown can cancel them.
       _foregroundSubscription = FirebaseMessaging.onMessage.listen(
-        _handleForegroundMessage,
+        _onForegroundMessage,
       );
 
       // Handle app opened from terminated state.
       RemoteMessage? initialMessage = await _fcm.getInitialMessage();
       if (initialMessage != null) {
-        _handleRemoteMessageTap(initialMessage);
+        _onMessageOpened(initialMessage);
       }
 
       // Handle app opened from background state.
-      _openedAppSubscription = FirebaseMessaging.onMessageOpenedApp.listen(
-        _handleRemoteMessageTap,
-      );
+      _openedAppSubscription =
+          FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpened);
 
       // Request permissions.
       await requestPermission();
@@ -189,6 +192,44 @@ class PushNotificationService {
         payload: message.data.toString(),
       ),
     );
+  }
+
+  /// Returns true the first time [message] is delivered and false when it is a
+  /// redelivery of a message already seen inside the dedup window.
+  ///
+  /// Exposed so callers (and tests) can ask whether a delivery is new without
+  /// going through the Firebase streams.
+  @visibleForTesting
+  bool acceptDelivery(RemoteMessage message) =>
+      _dedup.markSeen(pushNotificationDedupKey(message));
+
+  /// Ids currently inside the dedup window, oldest first.
+  @visibleForTesting
+  List<String> get dedupWindow => _dedup.entries;
+
+  /// Empties the dedup window.
+  @visibleForTesting
+  void resetDedup() => _dedup.clear();
+
+  /// Drops a redelivered foreground message: the tray already shows it (or the
+  /// user has dealt with it), so showing it again would only stack a copy.
+  void _onForegroundMessage(RemoteMessage message) {
+    if (!acceptDelivery(message)) {
+      debugPrint('Ignoring redelivered notification ${message.messageId}');
+      return;
+    }
+    _handleForegroundMessage(message);
+  }
+
+  /// Drops a redelivered tap: a message can reach the app through both
+  /// `getInitialMessage` and `onMessageOpenedApp`, and navigating twice would
+  /// leave the user on the wrong screen.
+  void _onMessageOpened(RemoteMessage message) {
+    if (!acceptDelivery(message)) {
+      debugPrint('Ignoring duplicate notification tap ${message.messageId}');
+      return;
+    }
+    _handleRemoteMessageTap(message);
   }
 
   Future<void> requestPermission() async {
