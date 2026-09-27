@@ -5,6 +5,7 @@ import { Download, Search } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { TransactionRow } from '@/components/transaction-row'
+import { EmptyState } from '@/components/empty-state'
 import { useOptimisticTransactions } from '@/features/history/state'
 import { fetchTransactions } from '@/features/history/services'
 import type { Transaction, OptimisticTransaction } from '@/features/history/models'
@@ -362,12 +363,21 @@ export function HistoryPage() {
             <Button variant="outline" size="sm" onClick={loadFirstPage}>Retry</Button>
           </div>
         ) : visibleTransactions.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-2">No transactions found</p>
-            <p className="text-sm text-muted-foreground">
-              Try adjusting your filters or search terms
-            </p>
-          </div>
+          hasActiveFilters ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-2">No transactions found</p>
+              <p className="text-sm text-muted-foreground">
+                Try adjusting your filters or search terms
+              </p>
+            </div>
+          ) : (
+            <EmptyState
+              illustration="history"
+              title="No transactions yet"
+              description="Once you send or receive an asset, your activity will show up here."
+              action={{ label: 'Start by receiving assets', href: '/receive' }}
+            />
+          )
         ) : (
           <div className="space-y-3">
             {visibleTransactions.map((tx) => {

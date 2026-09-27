@@ -8,6 +8,8 @@ import {
   QUEUE_ANALYTICS,
   QUEUE_PAYMENTS,
   QUEUE_HORIZON,
+  QUEUE_DASHBOARD,
+  QUEUE_DATA_EXPORT,
 } from './queue.constants';
 import { AnalyticsProcessor } from './processors/analytics.processor';
 import { ContractEventsProcessor } from './processors/contract-events.processor';
@@ -16,6 +18,9 @@ import { PaymentProcessor } from './processors/payment.processor';
 import { HorizonPollingProcessor } from './processors/horizon-polling.processor';
 import { HorizonPollingScheduler } from './processors/horizon-polling.scheduler';
 import { MilestoneProcessor } from './processors/milestone.processor';
+import { DataExportProcessor } from './processors/data-export.processor';
+import { DataExportModule } from '../users/data-export.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 const DEAD_LETTER_SETTINGS = {
   attempts: 3,
@@ -53,9 +58,13 @@ const DEAD_LETTER_SETTINGS = {
       { name: QUEUE_ANALYTICS },
       { name: QUEUE_PAYMENTS },
       { name: QUEUE_HORIZON },
+      { name: QUEUE_DASHBOARD },
+      { name: QUEUE_DATA_EXPORT },
     ),
     PrismaModule,
     ConfigModule,
+    DataExportModule,
+    NotificationsModule,
   ],
   providers: [
     EmailProcessor,
@@ -65,6 +74,7 @@ const DEAD_LETTER_SETTINGS = {
     HorizonPollingProcessor,
     HorizonPollingScheduler,
     MilestoneProcessor,
+    DataExportProcessor,
   ],
   exports: [BullModule],
 })

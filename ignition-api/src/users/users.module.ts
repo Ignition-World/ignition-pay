@@ -12,6 +12,11 @@ import { PermissionsService } from '../auth/permissions/permissions.service';
 import { PermissionsGuard } from '../auth/permissions/permissions.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { EmailVerificationTokenScheduler } from './email-verification-token.scheduler';
+import { QueueModule } from '../queue/queue.module';
+import { DashboardCacheService } from './dashboard-cache.service';
+import { DashboardCacheProcessor } from '../queue/processors/dashboard-cache.processor';
+import { DashboardCacheScheduler } from '../queue/processors/dashboard-cache.scheduler';
+import { DataExportModule } from './data-export.module';
 
 @Module({
   imports: [
@@ -19,6 +24,8 @@ import { EmailVerificationTokenScheduler } from './email-verification-token.sche
     ConfigModule,
     SessionModule,
     NotificationsModule,
+    QueueModule,
+    DataExportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -31,6 +38,9 @@ import { EmailVerificationTokenScheduler } from './email-verification-token.sche
   controllers: [UsersController, AdminUsersController],
   providers: [
     UsersService,
+    DashboardCacheService,
+    DashboardCacheProcessor,
+    DashboardCacheScheduler,
     JwtAuthGuard,
     AdminGuard,
     RolesGuard,
@@ -39,6 +49,6 @@ import { EmailVerificationTokenScheduler } from './email-verification-token.sche
     // Issue #617 — purges spent email verification tokens on a timer.
     EmailVerificationTokenScheduler,
   ],
-  exports: [UsersService],
+  exports: [UsersService, DashboardCacheService],
 })
 export class UsersModule {}

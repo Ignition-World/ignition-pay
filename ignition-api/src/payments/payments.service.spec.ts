@@ -8,6 +8,7 @@ import { PaymentsService } from './payments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QUEUE_PAYMENTS } from '../queue/queue.constants';
 import { PAYMENT_JOB_PROCESS } from '../queue/queue.jobs';
+import { DashboardCacheService } from '../users/dashboard-cache.service';
 
 // ── Factories ────────────────────────────────────────────────────────────────
 
@@ -84,22 +85,32 @@ const buildQueue = () => ({
   add: jest.fn().mockResolvedValue({ id: 'job-1' }),
 });
 
+/** Builds a dashboard cache mock. */
+const buildDashboardCache = () => ({
+  get: jest.fn().mockResolvedValue(undefined),
+  set: jest.fn().mockResolvedValue(undefined),
+  invalidate: jest.fn().mockResolvedValue(undefined),
+});
+
 // ── Test suite ────────────────────────────────────────────────────────────────
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
   let prisma: ReturnType<typeof buildPrisma>;
   let queue: ReturnType<typeof buildQueue>;
+  let dashboardCache: ReturnType<typeof buildDashboardCache>;
 
   const setup = async (prismaOverrides?: Parameters<typeof buildPrisma>[0]) => {
     prisma = buildPrisma(prismaOverrides);
     queue = buildQueue();
+    dashboardCache = buildDashboardCache();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
         { provide: PrismaService, useValue: prisma },
         { provide: getQueueToken(QUEUE_PAYMENTS), useValue: queue },
+        { provide: DashboardCacheService, useValue: dashboardCache },
       ],
     }).compile();
 

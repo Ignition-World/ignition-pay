@@ -12,6 +12,7 @@ import { TransactionsService } from './transactions.service';
 import {
   GetTransactionsQueryDto,
   SubmitTransactionDto,
+  EstimateFeeQueryDto,
 } from './dto/get-transactions.dto';
 import { StaleTransactionMonitorService } from './stale-transaction-monitor.service';
 
@@ -25,6 +26,19 @@ export class TransactionsController {
     private readonly transactionsService: TransactionsService,
     private readonly staleTransactionMonitor: StaleTransactionMonitorService,
   ) {}
+
+  /**
+   * GET /transactions/fee-estimate
+   * Estimates network fee and fiat equivalent for a pending transaction.
+   */
+  @Get('fee-estimate')
+  @UseGuards(ApiKeyGuard, ApiKeyScopeGuard)
+  @RequireScope('read')
+  @ApiOperation({ summary: 'Estimate network fee for a transaction' })
+  @ApiResponse({ status: 200, description: 'Estimated fee details' })
+  estimateFee(@Query() query: EstimateFeeQueryDto) {
+    return this.transactionsService.estimateFee(query);
+  }
 
   /**
    * GET /transactions/stale/count

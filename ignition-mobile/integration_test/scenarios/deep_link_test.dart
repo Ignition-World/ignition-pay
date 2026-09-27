@@ -23,18 +23,6 @@ import 'package:ignition_mobile/router/app_router.dart' as app_routes;
 
 import '../setup/test_bindings.dart';
 
-/// The full URI for a deep-link target — what `app_links` would emit to the
-/// Dart receiver. Stripping the scheme gives us the GoRouter path.
-String _deepLinkPath(String uri) {
-  // ignitionpay://pay/X?... or https://ignitionpay.com/pay/X?...
-  const ignitionPrefixes = ['ignitionpay://', 'https://ignitionpay.com/'];
-  for (final prefix in ignitionPrefixes) {
-    if (uri.startsWith(prefix)) {
-      return uri.substring(prefix.length);
-    }
-  }
-  return uri;
-}
 
 void main() {
   ensureIntegrationBinding();
@@ -50,12 +38,13 @@ void main() {
   }
 
   Future<void> simulateDeepLink(WidgetTester tester, String uri) async {
-    // FUTURE: platform channel. Once main.dart wires app_links, replace this
-    // with a `binding.defaultBinaryMessenger.handlePlatformMessage` call
-    // for `com.llfbandit.app_links/messages` carrying a MethodCall
-    // `onAppLink(uri)`. Until then, drive GoRouter directly with the path
-    // component of the deep link.
-    app_routes.appRouter.go('/${_deepLinkPath(uri)}');
+    // FUTURE: platform channel. Once the app_links receiver is exercised on a
+    // device, replace this with a
+    // `binding.defaultBinaryMessenger.handlePlatformMessage` call for
+    // `com.llfbandit.app_links/messages` carrying a MethodCall `onAppLink(uri)`.
+    // Until then, drive GoRouter with the exact production resolver that
+    // main.dart uses.
+    app_routes.appRouter.go(app_routes.deepLinkLocation(Uri.parse(uri)));
     await tester.pumpAndSettle();
   }
 

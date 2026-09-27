@@ -6,7 +6,10 @@ import 'app.dart';
 import 'router/app_router.dart';
 import 'core/monitoring_service.dart';
 import 'core/network/api_client.dart';
+import 'core/network/connectivity_service.dart';
 import 'core/push_notification_service.dart';
+import 'features/send/services/draft_services.dart';
+import 'features/send/services/draft_sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +28,26 @@ Future<void> main() async {
       // Services that depend on Firebase being ready go here.
       ApiClient().initialize();
       await PushNotificationService().init();
+
+      // Flush any offline send drafts as soon as connectivity returns (#678).
+      final draftSyncService = DraftSyncService(
+        store: DraftServices.store,
+        connectivity: ConnectivityPlusService(),
+        submit: (draft) async {
+          await ApiClient().post<dynamic>(
+            '/transactions',
+            data: {
+              'recipient': draft.recipient,
+              'amount': draft.amount,
+              'asset': draft.asset,
+              if (draft.memo != null) 'memo': draft.memo,
+            },
+          );
+        },
+      );
+      DraftServices.syncService = draftSyncService;
+      await draftSyncService.start();
+
       final links = AppLinks();
       final initialLink = await links.getInitialLink();
       if (initialLink != null) {

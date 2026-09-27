@@ -25,6 +25,25 @@ export default defineConfig([
       '@typescript-eslint/no-unused-vars': 'warn',
       'react-hooks/purity': 'off',
       'react-hooks/set-state-in-effect': 'off',
+      // Keep spacing on the 4px design scale. Arbitrary px/rem/em values in
+      // spacing utilities (margin, padding, gap, inset, position, size)
+      // silently break the rhythm, so ban them here instead of relying on
+      // review. See docs/spacing-audit.md for the scale and the audit.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'Literal[value=/\\b(?:m[trblxy]?|p[trblxy]?|gap(?:-[xy])?|space-[xy]|inset(?:-[xy])?|top|bottom|left|right|size)-\\[[0-9.]+(?:px|rem|em)\\]/]',
+          message:
+            'Arbitrary spacing value detected. Use the 4px design scale (e.g. `p-2`, `gap-4`, `mt-6`) instead of bracket values like `p-[10px]`. See docs/spacing-audit.md.',
+        },
+        {
+          selector:
+            'TemplateElement[value.cooked=/\\b(?:m[trblxy]?|p[trblxy]?|gap(?:-[xy])?|space-[xy]|inset(?:-[xy])?|top|bottom|left|right|size)-\\[[0-9.]+(?:px|rem|em)\\]/]',
+          message:
+            'Arbitrary spacing value detected. Use the 4px design scale (e.g. `p-2`, `gap-4`, `mt-6`) instead of bracket values like `p-[10px]`. See docs/spacing-audit.md.',
+        },
+      ],
     },
   },
   globalIgnores([
