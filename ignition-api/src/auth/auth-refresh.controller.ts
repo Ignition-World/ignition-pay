@@ -28,7 +28,14 @@ export class AuthRefreshController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Exchange a refresh token for a new token pair' })
+  @ApiOperation({
+    summary: 'Exchange a refresh token for a new token pair',
+    description:
+      'Validates the refresh token, rotates it and returns a fresh (access, refresh) pair. ' +
+      'The presented token is single-use: replaying an already-rotated token from the same ' +
+      'family is treated as theft and rejected with 401. Unauthenticated — no bearer header ' +
+      'required.',
+  })
   @ApiBody({ type: RefreshTokenDto })
   @ApiResponse({ status: 200, type: LoginResponseDto })
   @ApiResponse({
