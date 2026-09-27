@@ -47,6 +47,13 @@ function DialogContent({
       <DialogBackdrop />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        // Issue #630. Base UI gives the popup role="dialog", traps focus and
+        // marks the rest of the page aria-hidden, but it does not set
+        // aria-modal. WCAG 2.1 AA expects it on a modal dialog, and some screen
+        // readers use it rather than the aria-hidden sweep to decide to enter
+        // application mode, so without it the dialog can be announced as an
+        // ordinary group.
+        aria-modal="true"
         className={cn(
           'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2',
           'rounded-xl border border-border bg-card p-6 text-card-foreground shadow-lg',
