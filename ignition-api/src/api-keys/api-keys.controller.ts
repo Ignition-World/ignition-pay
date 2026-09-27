@@ -28,6 +28,15 @@ import { RequirePermissions } from '../auth/permissions/require-permissions.deco
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateApiKeyDto } from './dto/create-api-key.dto';
 import { UpdateApiKeyDto } from './dto/update-api-key.dto';
+import {
+  ApiKeyErrorResponseDto,
+  ApiKeyListResponseDto,
+  ApiKeySummaryDto,
+  ApiKeyUserListResponseDto,
+  CreateApiKeyResponseDto,
+  FinalizeRotationResponseDto,
+  MessageResponseDto,
+} from './dto/api-key-response.dto';
 
 interface JwtUser {
   sub: string;
@@ -35,6 +44,16 @@ interface JwtUser {
   role: string;
 }
 
+/**
+ * Management surface for the `X-API-Key` credentials that the resource routes
+ * (e.g. `GET /transactions`) authenticate with. These routes themselves use a
+ * **JWT bearer** token — the same `JWT-auth` scheme registered by the
+ * `DocumentBuilder` in `main.ts` — obtained from `POST /auth/verify` (wallet
+ * signature) or `POST /auth/refresh`.
+ *
+ * Only a SHA-256 digest of each key is stored, so a key is shown exactly once
+ * at creation/rotation time and cannot be recovered afterwards.
+ */
 @ApiTags('api-keys')
 @ApiBearerAuth('JWT-auth')
 @Controller('api-keys')
@@ -53,8 +72,26 @@ export class ApiKeysController {
         : 60_000,
     },
   })
-  @ApiOperation({ summary: 'Create a new API key' })
-  @ApiResponse({ status: 201, description: 'API key successfully created' })
+  @ApiOperation({
+    summary: 'Create a new API key',
+    description:
+      'Mints an `sk_`-prefixed key, stores only its SHA-256 digest plus a 12-character ' +
+      'display prefix, and returns the raw key once. New keys are created with `read` scope. ' +
+      'Rate limited on the `strict` bucket.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'API key successfully created; `key` is returned only here',
+    type: CreateApiKeyResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid payload', type: ApiKeyErrorResponseDto })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT', type: ApiKeyErrorResponseDto })
+  @ApiResponse({
+    status: 409,
+    description: 'An active API key already exists for this prefix',
+    type: ApiKeyErrorResponseDto,
+  })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async create(
     @Body() body: CreateApiKeyDto,
     @Req() req: Request & { user: JwtUser },
@@ -111,8 +148,17 @@ export class ApiKeysController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all API keys for the authenticated user' })
-  @ApiResponse({ status: 200, description: 'API keys retrieved successfully' })
+  @ApiOperation({
+    summary: 'List all API keys for the authenticated user',
+    description:
+      'Returns the caller keys newest first. Raw keys are never included, only the display prefix and lifecycle state.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'API keys retrieved successfully',
+    type: ApiKeyListResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT', type: ApiKeyErrorResponseDto })
   async list(@Req() req: Request & { user: JwtUser }) {
     const apiKeys = await this.prisma.apiKey.findMany({
       where: {
@@ -142,10 +188,21 @@ export class ApiKeysController {
   @Get('admin/users/:userId')
   @UseGuards(JwtAuthGuard, AdminGuard, PermissionsGuard)
   @RequirePermissions(Permission.APIKEY_MANAGE_ANY)
-  @ApiOperation({ summary: 'List API keys for a specific user (admin)' })
+  @ApiOperation({
+    summary: 'List API keys for a specific user (admin)',
+    description:
+      'Requires the `apikey:manage:any` permission in addition to a valid JWT. The target user does not need to be the caller.',
+  })
   @ApiResponse({
     status: 200,
     description: 'User API keys retrieved successfully',
+    type: ApiKeyUserListResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT', type: ApiKeyErrorResponseDto })
+  @ApiResponse({
+    status: 403,
+    description: 'Caller is not an admin or lacks the apikey:manage:any permission',
+    type: ApiKeyErrorResponseDto,
   })
   async listForUser(@Param('userId') userId: string) {
     const apiKeys = await this.prisma.apiKey.findMany({
@@ -211,9 +268,15 @@ export class ApiKeysController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update API key metadata' })
-  @ApiResponse({ status: 200, description: 'API key updated successfully' })
-  @ApiResponse({ status: 404, description: 'API key not found' })
+  @ApiOperation({
+    summary: 'Update API key metadata',
+    description:
+      'Only `name` is mutable. Scope and lifecycle are changed through rotation and revocation.',
+  })
+  @ApiResponse({ status: 200, description: 'API key updated successfully', type: ApiKeySummaryDto })
+  @ApiResponse({ status: 400, description: 'Invalid payload', type: ApiKeyErrorResponseDto })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT', type: ApiKeyErrorResponseDto })
+  @ApiResponse({ status: 404, description: 'API key not found', type: ApiKeyErrorResponseDto })
   async update(
     @Param('id') id: string,
     @Body() body: UpdateApiKeyDto,
@@ -267,9 +330,18 @@ export class ApiKeysController {
   @ApiOperation({
     summary:
       'Rotate an API key without downtime (old key stays active during grace period)',
+    description:
+      'Issues a replacement key carrying the same name and scope. The old key keeps working for a 7 day grace period and is then rejected by `ApiKeyGuard`; finalize or cancel to end it sooner. The new raw key is returned once.',
   })
-  @ApiResponse({ status: 200, description: 'API key rotated successfully' })
-  @ApiResponse({ status: 404, description: 'API key not found' })
+  @ApiResponse({ status: 200, description: 'API key rotated successfully', type: CreateApiKeyResponseDto })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT', type: ApiKeyErrorResponseDto })
+  @ApiResponse({ status: 404, description: 'API key not found', type: ApiKeyErrorResponseDto })
+  @ApiResponse({
+    status: 409,
+    description: 'API key is revoked, or a rotation is already in progress',
+    type: ApiKeyErrorResponseDto,
+  })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async rotate(
     @Param('id') id: string,
     @Req() req: Request & { user: JwtUser },
@@ -367,12 +439,22 @@ export class ApiKeysController {
   })
   @ApiOperation({
     summary: 'Finalize key rotation (immediately revoke the old key)',
+    description:
+      'Ends the grace period early by revoking the old key. The replacement key is untouched.',
   })
   @ApiResponse({
     status: 200,
     description: 'Rotation finalized, old key revoked',
+    type: FinalizeRotationResponseDto,
   })
-  @ApiResponse({ status: 404, description: 'API key not found' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT', type: ApiKeyErrorResponseDto })
+  @ApiResponse({ status: 404, description: 'API key not found', type: ApiKeyErrorResponseDto })
+  @ApiResponse({
+    status: 409,
+    description: 'API key is not currently in rotation',
+    type: ApiKeyErrorResponseDto,
+  })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async finalizeRotation(
     @Param('id') id: string,
     @Req() req: Request & { user: JwtUser },
@@ -433,12 +515,22 @@ export class ApiKeysController {
   })
   @ApiOperation({
     summary: 'Cancel key rotation (revoke the new key, keep old key active)',
+    description:
+      'Abandons an in-progress rotation: the replacement key is revoked and the original key is left active with its rotation fields cleared.',
   })
   @ApiResponse({
     status: 200,
     description: 'Rotation cancelled, new key revoked',
+    type: MessageResponseDto,
   })
-  @ApiResponse({ status: 404, description: 'API key not found' })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT', type: ApiKeyErrorResponseDto })
+  @ApiResponse({ status: 404, description: 'API key not found', type: ApiKeyErrorResponseDto })
+  @ApiResponse({
+    status: 409,
+    description: 'API key is not currently in rotation',
+    type: ApiKeyErrorResponseDto,
+  })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async cancelRotation(
     @Param('id') id: string,
     @Req() req: Request & { user: JwtUser },
@@ -503,9 +595,15 @@ export class ApiKeysController {
         : 60_000,
     },
   })
-  @ApiOperation({ summary: 'Revoke an API key' })
-  @ApiResponse({ status: 200, description: 'API key successfully revoked' })
-  @ApiResponse({ status: 404, description: 'API key not found' })
+  @ApiOperation({
+    summary: 'Revoke an API key',
+    description:
+      'Irreversibly deactivates the key. Requests presenting it afterwards fail with 401.',
+  })
+  @ApiResponse({ status: 200, description: 'API key successfully revoked', type: MessageResponseDto })
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT', type: ApiKeyErrorResponseDto })
+  @ApiResponse({ status: 404, description: 'API key not found', type: ApiKeyErrorResponseDto })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
   async revoke(
     @Param('id') id: string,
     @Req() req: Request & { user: JwtUser },

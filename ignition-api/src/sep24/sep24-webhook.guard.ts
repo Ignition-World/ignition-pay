@@ -18,6 +18,13 @@ import { Sep24WebhookVerificationService } from './sep24-webhook-verification.se
  *   Webhook-Id        – unique ID for this webhook delivery
  *   Webhook-Signature – "v1,<base64>" signed over "<Webhook-Id>.<rawBody>"
  *
+ * Optional header:
+ *   Webhook-Timestamp – Unix seconds the delivery was created. When present it
+ *                       must fall inside the configured tolerance window
+ *                       (Issue #618); the timestamp is not part of the signed
+ *                       payload, so it does not authenticate anything on its
+ *                       own — it only bounds replay of a captured request.
+ *
  * The `anchorId` is expected as a route parameter (`:anchorId`).
  *
  * Raw body access requires the NestJS application to be started with:
@@ -70,7 +77,29 @@ export class Sep24WebhookGuard implements CanActivate {
     }
 
     // ── 4. Verify ─────────────────────────────────────────────────────────
-    await this.webhookVerification.verifyOrThrow(anchorId, webhookId, signature, rawBody);
+    // Issue #618: forward the optional Webhook-Timestamp so the service can
+    // reject deliveries outside the tolerance window. An absent or
+    // non-numeric header is simply not checked — existing anchors that do not
+    // send one keep working, and a malformed value is never treated as "now".
+    const timestampHeader = request.headers['webhook-timestamp'];
+    const parsedTimestamp =
+      typeof timestampHeader === 'string' && /^\d+$/.test(timestampHeader.trim())
+        ? Number.parseInt(timestampHeader.trim(), 10)
+        : undefined;
+
+    if (timestampHeader !== undefined && parsedTimestamp === undefined) {
+      this.logger.warn(
+        `SEP-24 webhook [${anchorId}]: ignoring malformed Webhook-Timestamp header`,
+      );
+    }
+
+    await this.webhookVerification.verifyOrThrow(
+      anchorId,
+      webhookId,
+      signature,
+      rawBody,
+      { timestampSeconds: parsedTimestamp },
+    );
     return true;
   }
 }
