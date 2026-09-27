@@ -11,52 +11,71 @@ import {
   storeContrast,
 } from '@/lib/theme'
 
-function getInitialTheme(): ThemeMode {
-  if (typeof window === 'undefined') return 'system'
-  return getStoredTheme()
+/**
+ * The values the server renders. The first client render must produce exactly
+ * these, otherwise React reports a hydration mismatch, so `localStorage` is
+ * only ever read from an effect that runs after mount.
+ */
+const SERVER_MODE: ThemeMode = 'system'
+const SERVER_CONTRAST: ContrastLevel = 'normal'
+
+const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
+
+function prefersDark(): boolean {
+  return window.matchMedia(DARK_SCHEME_QUERY).matches
 }
 
+/**
+ * Reads the persisted theme and contrast, then applies them to the document.
+ * The inline script in `app/layout.tsx` has already set the `dark` and
+ * `high-contrast` classes before first paint, so this only has to catch up.
+ */
 export function useTheme() {
-  const [mode, setModeState] = useState<ThemeMode>(getInitialTheme)
-  const [contrast, setContrastState] = useState<ContrastLevel>('normal')
+  const [mode, setModeState] = useState<ThemeMode>(SERVER_MODE)
+  const [contrast, setContrastState] = useState<ContrastLevel>(SERVER_CONTRAST)
   const [hydrated, setHydrated] = useState(false)
+  /** Tracked in state so the OS preference is not re-read during render. */
+  const [systemPrefersDark, setSystemPrefersDark] = useState(false)
   const mqlRef = useRef<MediaQueryList | null>(null)
-  const handlerRef = useRef<(() => void) | null>(null)
 
-  // Initialize from storage and mark as hydrated
+  // Adopt the stored preference after mount. `applyTheme` runs here as well as
+  // in the effect below so a dark-mode visitor never sees a light flash while
+  // the state updates propagate.
   useEffect(() => {
-    const stored = getStoredTheme()
-    const storedContrast = getStoredContrast()
-    setModeState(stored)
+    let storedMode = SERVER_MODE
+    let storedContrast = SERVER_CONTRAST
+    try {
+      storedMode = getStoredTheme()
+      storedContrast = getStoredContrast()
+    } catch {
+      // Private browsing modes can throw on access; fall back to the defaults.
+    }
+
+    setModeState(storedMode)
     setContrastState(storedContrast)
-    applyTheme(stored, storedContrast)
+    setSystemPrefersDark(prefersDark())
+    applyTheme(storedMode, storedContrast)
     setHydrated(true)
   }, [])
 
-  // Watch system color scheme when in 'system' mode
+  // Re-apply the theme on every mode/contrast change, and keep `system` in
+  // sync with the OS preference while it is the active mode.
   useEffect(() => {
     if (!hydrated) return
-    const mql = mqlRef.current ?? window.matchMedia('(prefers-color-scheme: dark)')
+
+    const mql = mqlRef.current ?? window.matchMedia(DARK_SCHEME_QUERY)
     mqlRef.current = mql
 
-    if (handlerRef.current) {
-      mql.removeEventListener('change', handlerRef.current)
-      handlerRef.current = null
+    const handler = () => {
+      setSystemPrefersDark(mql.matches)
+      if (mode === 'system') applyTheme('system', contrast)
     }
 
-    if (mode === 'system') {
-      const handler = () => applyTheme('system', contrast)
-      handlerRef.current = handler
-      mql.addEventListener('change', handler)
-    }
-    // Apply theme on each mode/contrast change
+    if (mode === 'system') mql.addEventListener('change', handler)
     applyTheme(mode, contrast)
 
     return () => {
-      if (handlerRef.current) {
-        mql.removeEventListener('change', handlerRef.current)
-        handlerRef.current = null
-      }
+      if (mode === 'system') mql.removeEventListener('change', handler)
     }
   }, [mode, hydrated, contrast])
 
@@ -76,7 +95,7 @@ export function useTheme() {
     setMode(mode === 'dark' ? 'light' : 'dark')
   }, [mode, setMode])
 
-  const isDark = hydrated && (mode === 'dark' || (mode === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches))
+  const isDark = hydrated && (mode === 'dark' || (mode === 'system' && systemPrefersDark))
   const isLight = hydrated && !isDark
   const isSystem = mode === 'system'
   const isHighContrast = contrast === 'high'
