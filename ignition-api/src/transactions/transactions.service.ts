@@ -9,8 +9,13 @@ import {
   GetTransactionsQueryDto,
   GetTransactionsResponseDto,
   SubmitTransactionDto,
+  SubmitTransactionResponseDto,
   TransactionDto,
 } from './dto/get-transactions.dto';
+import {
+  IdempotencyService,
+  isValidIdempotencyKey,
+} from './idempotency.service';
 import { WalletNetwork } from '../wallets/dto/create-wallet.dto';
 import {
   isValidNetworkAddress,
@@ -43,7 +48,10 @@ function decodeCursor(cursor: string): string {
 
 @Injectable()
 export class TransactionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly idempotency: IdempotencyService,
+  ) {}
 
   async getTransactions(
     query: GetTransactionsQueryDto,
@@ -168,11 +176,58 @@ export class TransactionsService {
   }
 
   /**
-   * Issue #244 — Idempotent transaction submission.
+   * Submit a new transaction.
+   *
+   * Two independent deduplication mechanisms are supported and either may be
+   * used (or both):
+   *
+   * - Issue #244 — `dto.stellarTxHash`. The column carries a unique index, so a
+   *   duplicate is resolved by a `P2002` catch as well as by the pre-check.
+   * - Issue #615 — the `Idempotency-Key` request header, passed here as
+   *   `idempotencyKey`. Must be a v4 UUID. The claim is made with a single
+   *   atomic `SET ... NX PX` (see `IdempotencyService`), so two concurrent
+   *   requests carrying the same key cannot both insert: one executes and
+   *   stores its response, the other replays that stored response without
+   *   re-executing — even if its payload differs.
    */
   async submitTransaction(
     dto: SubmitTransactionDto,
-  ): Promise<TransactionDto & { alreadyExisted: boolean }> {
+    idempotencyKey?: string,
+  ): Promise<SubmitTransactionResponseDto> {
+    if (idempotencyKey !== undefined && !isValidIdempotencyKey(idempotencyKey)) {
+      throw new BadRequestException(
+        'Idempotency-Key header must be a version 4 UUID',
+      );
+    }
+
+    if (!idempotencyKey) {
+      return this.persistTransaction(dto);
+    }
+
+    const claim = await this.idempotency.claim(idempotencyKey);
+
+    if (claim.status === 'replayed') {
+      return claim.response as SubmitTransactionResponseDto;
+    }
+
+    try {
+      const result = await this.persistTransaction(dto);
+      await this.idempotency.complete(idempotencyKey, result);
+      return result;
+    } catch (err) {
+      // Drop the claim so a corrected retry with the same key can succeed
+      // instead of being replayed as a 24-hour "in flight".
+      await this.idempotency.release(idempotencyKey);
+      throw err;
+    }
+  }
+
+  /**
+   * Issue #244 — Idempotent transaction submission.
+   */
+  private async persistTransaction(
+    dto: SubmitTransactionDto,
+  ): Promise<SubmitTransactionResponseDto> {
     if (!dto.fromWalletId || !dto.toWalletId) {
       throw new BadRequestException(
         'Both fromWalletId and toWalletId are required',
