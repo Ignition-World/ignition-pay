@@ -108,8 +108,8 @@ abstract final class AppTheme {
     return base.copyWith(
       textTheme: textTheme,
       primaryTextTheme: primaryTextTheme,
-      // Keep ThemeData-level family aligned with TextTheme (not per-widget).
-      fontFamily: fontFamily,
+      // The Inter family is applied through the TextTheme above; ThemeData no
+      // longer exposes a `fontFamily` argument.
       extensions: <ThemeExtension<dynamic>>[
         appColorTokensFor(brightness),
       ],

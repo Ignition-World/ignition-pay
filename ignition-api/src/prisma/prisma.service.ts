@@ -8,6 +8,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 import { QueryMetricsService } from './query-metrics.service';
+import { resolveReplicaConfig } from './replica.config';
+import { ReadReplicaRouter, ReplicaStatus } from './read-replica.router';
 
 const DEFAULT_SLOW_QUERY_THRESHOLD_MS = 500;
 
@@ -83,6 +85,10 @@ export class PrismaService
   private queued = 0;
   private readonly waitQueue: Waiter[] = [];
 
+  /** Issue #599 — read replica. Null when DATABASE_REPLICA_URL is unset. */
+  private readonly replicaClient: PrismaClient | null;
+  private readonly replicaRouter: ReadReplicaRouter<PrismaClient>;
+
   constructor(config?: ConfigService, queryMetrics?: QueryMetricsService) {
     const poolSize = clampPoolSize(process.env.PRISMA_POOL_SIZE);
     const poolTimeoutMs = parsePositiveInt(
@@ -93,12 +99,15 @@ export class PrismaService
       process.env.PRISMA_QUEUE_TIMEOUT_MS,
       DEFAULT_QUEUE_TIMEOUT_MS,
     );
-    const baseUrl = process.env.DATABASE_URL ?? '';
+    // DATABASE_PRIMARY_URL / DATABASE_REPLICA_URL fall back to DATABASE_URL
+    // (replica unset => primary-only, so existing deployments are unaffected).
+    const { primaryUrl, replicaUrl, replicaEnabled } =
+      resolveReplicaConfig(process.env);
     const datasources =
-      baseUrl.length > 0
+      primaryUrl.length > 0
         ? {
             db: {
-              url: withPoolParams(baseUrl, poolSize, poolTimeoutMs),
+              url: withPoolParams(primaryUrl, poolSize, poolTimeoutMs),
             },
           }
         : undefined;
@@ -110,6 +119,38 @@ export class PrismaService
     this.queueTimeoutMs = queueTimeoutMs;
     this.config = config;
     this.queryMetrics = queryMetrics;
+
+    this.replicaClient = replicaEnabled
+      ? this.buildReplicaClient(replicaUrl as string)
+      : null;
+    this.replicaRouter = new ReadReplicaRouter<PrismaClient>(
+      this,
+      this.replicaClient,
+    );
+  }
+
+  /**
+   * Issue #599 — open a second client against the read replica. Constructed
+   * eagerly but never `$connect()`ed at boot: an unreachable replica must not
+   * stop the process from starting, so the first read that lands on it is what
+   * discovers the failure and trips the router's fallback to the primary.
+   */
+  private buildReplicaClient(replicaUrl: string): PrismaClient | null {
+    try {
+      return new PrismaClient({
+        datasources: {
+          db: {
+            url: withPoolParams(replicaUrl, this.poolSize, this.poolTimeoutMs),
+          },
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        'Failed to create read replica client, continuing primary-only: ' +
+          (err as Error).message,
+      );
+      return null;
+    }
   }
 
   async onModuleInit(): Promise<void> {
@@ -118,7 +159,28 @@ export class PrismaService
       `Prisma connected (pool_size=${this.poolSize}, pool_timeout_ms=${this.poolTimeoutMs}, queue_timeout_ms=${this.queueTimeoutMs})`,
     );
     this.logger.log('Prisma connected to PostgreSQL');
+    this.logger.log(
+      this.replicaRouter.getStatus().enabled
+        ? 'Read replica configured (reads may be routed to it)'
+        : 'Read replica not configured (primary-only reads)',
+    );
 
+    this.installQueryMetrics(this);
+    if (this.replicaClient) {
+      this.installQueryMetrics(this.replicaClient);
+    }
+  }
+
+  /**
+   * Issue #607 — time every query and log ones that exceed the threshold
+   * (model, operation, duration) so slow queries are visible without a
+   * profiler attached. Percentiles are recorded for all queries, regardless
+   * of threshold, via QueryMetricsService.
+   *
+   * Applied to the replica client as well so replica-served reads show up in
+   * the same percentiles as primary reads.
+   */
+  private installQueryMetrics(client: PrismaClient): void {
     if (!this.config || !this.queryMetrics) {
       return;
     }
@@ -128,11 +190,7 @@ export class PrismaService
       DEFAULT_SLOW_QUERY_THRESHOLD_MS,
     );
 
-    // Issue #607 — time every query and log ones that exceed the threshold
-    // (model, operation, duration) so slow queries are visible without a
-    // profiler attached. Percentiles are recorded for all queries,
-    // regardless of threshold, via QueryMetricsService.
-    this.$use(async (params, next) => {
+    client.$use(async (params, next) => {
       const start = Date.now();
       const result = await next(params);
       const durationMs = Date.now() - start;
@@ -159,6 +217,14 @@ export class PrismaService
       );
     }
     await this.$disconnect();
+    if (this.replicaClient) {
+      await this.replicaClient.$disconnect().catch((err) => {
+        this.logger.warn(
+          'Read replica disconnect failed during shutdown: ' +
+            (err as Error).message,
+        );
+      });
+    }
   }
 
   async enableShutdownHooks(_app: unknown): Promise<void> {
@@ -176,6 +242,65 @@ export class PrismaService
       available: Math.max(0, this.poolSize - this.active),
       exhausted: this.active >= this.poolSize,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Read replicas (issue #599)
+  // -------------------------------------------------------------------------
+  /**
+   * True when a read replica is configured. False in every deployment that
+   * only sets DATABASE_URL, in which case reads run against the primary.
+   */
+  isReplicaEnabled(): boolean {
+    return this.replicaRouter.getStatus().enabled;
+  }
+
+  /**
+   * The client a read should currently use: the replica when it is configured
+   * and healthy, otherwise the primary. Always safe to query — this never
+   * returns a client that is known to be broken.
+   */
+  getReadClient(): PrismaClient {
+    return this.replicaRouter.getReadClient();
+  }
+
+  /**
+   * Run a **read-only** query against the read replica, transparently falling
+   * back to the primary when the replica is unavailable.
+   *
+   * Prefer this over `getReadClient()` so a mid-flight replica failure is
+   * absorbed and the replica is taken out of rotation, rather than surfacing
+   * as a request error.
+   *
+   * Read-your-writes: replication lag means a replica can briefly lack a row
+   * that was just written. Any read that must observe a write this process
+   * just performed has to run on the primary — use `this.<model>` (or
+   * `withPrimary`) for those, not this method.
+   */
+  async withReadReplica<T>(
+    fn: (client: PrismaClient) => Promise<T>,
+  ): Promise<T> {
+    return this.replicaRouter.withReadReplica(fn);
+  }
+
+  /** Run a read against the primary, skipping the replica entirely. */
+  async withPrimary<T>(fn: (client: PrismaService) => Promise<T>): Promise<T> {
+    return fn(this);
+  }
+
+  /** Current replica status without triggering a probe. */
+  getReplicaStatus(): ReplicaStatus {
+    return this.replicaRouter.getStatus();
+  }
+
+  /**
+   * Probe the replica and return its refreshed status. Rate-limited to one
+   * probe per `REPLICA_PROBE_INTERVAL_MS` (default 5s) so a health poll storm
+   * cannot turn into a connection storm.
+   */
+  async checkReplica(): Promise<ReplicaStatus> {
+    await this.replicaRouter.pingReplica();
+    return this.replicaRouter.getStatus();
   }
 
   /**

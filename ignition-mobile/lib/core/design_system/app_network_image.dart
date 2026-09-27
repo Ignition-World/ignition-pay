@@ -30,22 +30,23 @@ class AppNetworkImage extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
         child: CachedNetworkImage(
-        imageUrl: url,
-        width: width,
-        height: height,
-        fit: fit,
-        placeholder: (_, __) => ShimmerBox(
-          width: width ?? 64,
-          height: height ?? 64,
-          borderRadius: borderRadius,
-        ),
-        errorWidget: (_, __, ___) => Container(
+          imageUrl: url,
           width: width,
           height: height,
-          color: context.appColors.placeholderSurface,
-          child: Icon(
-            Icons.broken_image_outlined,
-            color: context.appColors.muted,
+          fit: fit,
+          placeholder: (_, __) => ShimmerBox(
+            width: width ?? 64,
+            height: height ?? 64,
+            borderRadius: borderRadius,
+          ),
+          errorWidget: (_, __, ___) => Container(
+            width: width,
+            height: height,
+            color: context.appColors.placeholderSurface,
+            child: Icon(
+              Icons.broken_image_outlined,
+              color: context.appColors.muted,
+            ),
           ),
         ),
       ),

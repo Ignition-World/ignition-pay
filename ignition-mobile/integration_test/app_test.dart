@@ -10,6 +10,7 @@
 // Available scenarios:
 //   - app_launch    : launch flow + GoRouter 404 handling
 //   - deep_link     : ignitionpay://... / https://ignitionpay.com/...
+//   - notification_tap: push tap -> store -> navigate to the target screen
 //   - auth_flow     : token refresh on 401
 //   - android       : Android-only platform driver (notification channels, FCM)
 //   - ios           : iOS-only platform driver (permission flow, presentation)
@@ -27,6 +28,7 @@ import 'platform/ios_driver_test.dart' as ios_driver;
 import 'scenarios/app_launch_test.dart' as app_launch;
 import 'scenarios/auth_flow_test.dart' as auth_flow;
 import 'scenarios/deep_link_test.dart' as deep_link;
+import 'scenarios/notification_tap_test.dart' as notification_tap;
 
 void main() {
   // Use the integration-test-aware binding so on-device timings, screenshots
@@ -48,6 +50,9 @@ void main() {
     }
     if (scenario == 'all' || scenario == 'auth_flow') {
       auth_flow.main();
+    }
+    if (scenario == 'all' || scenario == 'notification_tap') {
+      notification_tap.main();
     }
     if (scenario == 'all' || scenario == 'android') {
       android_driver.main();

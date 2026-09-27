@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -5,8 +7,15 @@ import 'package:go_router/go_router.dart';
 import '../../../core/design_system/design_system.dart';
 import '../../../core/local/balance_cache.dart';
 import '../../../core/network/api_exception.dart';
+import '../services/home_service.dart';
+import 'history_section.dart';
 
 /// Home dashboard with pull-to-refresh.
+///
+/// While the first load runs, the page body shows a [HomeSkeleton] instead
+/// of a blank screen. The skeleton stays up for at least 300ms so a fast
+/// response doesn't cause a flash, and is replaced by real data (or an error
+/// banner with Retry) as soon as both conditions hold.
 ///
 /// Pulling down reloads balances, recent transactions and unread
 /// notifications through [HomeDataSource]. Existing data stays on screen for
@@ -17,13 +26,13 @@ import '../../../core/network/api_exception.dart';
 /// The refresh affordance follows the current platform: a Material
 /// [RefreshIndicator] on Android and a Cupertino-style
 /// [CupertinoSliverRefreshControl] on iOS/macOS.
-import 'history_section.dart';
-
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
     this.walletAddress = 'current-wallet',
     this.fetchBalances,
+    this.dataSource,
+    this.balanceCache,
   });
 
   final String walletAddress;
@@ -52,41 +61,65 @@ class _HomePageState extends State<HomePage> {
   late final HomeDataSource _dataSource = widget.dataSource ?? HomeService();
 
   CachedBalances? _cached;
+  List<Map<String, dynamic>> _transactions = const <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _notifications = const <Map<String, dynamic>>[];
 
-  /// True while the background fetch is in progress.
+  /// True while the launch-time balance load is in flight.
   bool _loading = false;
+
+  /// True while a pull-to-refresh is in flight.
+  bool _refreshing = false;
 
   /// True while the user explicitly triggered a retry.
   bool _retrying = false;
 
-  /// Non-null when the most recent fetch failed.
-  ApiException? _error;
+  /// Non-null when the launch-time load failed. Rendered as a full-screen
+  /// [ErrorStateView] because there is nothing else to show.
+  ApiException? _loadError;
+
+  /// True when the last pull-to-refresh failed. Rendered as an inline banner
+  /// on top of the data the user already had.
+  bool _refreshFailed = false;
+
+  /// Whether the first load (cache read + optional initial fetch) finished.
+  bool _initialLoadDone = false;
+
+  /// Whether the 300ms minimum skeleton window elapsed.
+  bool _minSkeletonElapsed = false;
+
+  /// True until the skeleton is dismissed in favour of real content.
+  bool _showingSkeleton = true;
+
+  Timer? _skeletonMinTimer;
+
+  /// Acceptance criterion: the skeleton must not flash away faster than
+  /// 300ms, otherwise a slow first frame reads as a flicker.
+  static const Duration _minSkeletonDuration = Duration(milliseconds: 300);
 
   @override
   void initState() {
     super.initState();
+    _skeletonMinTimer = Timer(_minSkeletonDuration, () {
+      _minSkeletonElapsed = true;
+      _dismissSkeletonIfReady();
+    });
     _loadInitialBalances();
   }
 
-  Future<void> _loadBalances({
-    bool invalidate = false,
-    bool isRetry = false,
-  }) async {
-    if (invalidate) await _cache.invalidate(widget.walletAddress);
-
-    // Read whatever is in the cache first so the screen is never blank.
+  /// Launch path: read the cache so the screen is never blank, then fetch
+  /// balances when the legacy [HomePage.fetchBalances] seam is provided.
+  Future<void> _loadInitialBalances({bool isRetry = false}) async {
     final cached = await _cache.read(widget.walletAddress);
     if (!mounted) return;
     setState(() => _cached = cached);
 
-    final fetchBalances = widget.fetchBalances;
-    if (fetchBalances == null) return;
+      final fetchBalances = widget.fetchBalances;
+      if (fetchBalances == null) return;
 
     if (mounted) {
       setState(() {
         _loading = true;
         _retrying = isRetry;
-        _error = null;
       });
     }
 
@@ -94,7 +127,14 @@ class _HomePageState extends State<HomePage> {
       final fresh = await fetchBalances();
       await _cache.write(widget.walletAddress, fresh);
       final refreshed = await _cache.read(widget.walletAddress);
-      if (mounted) setState(() => _cached = refreshed);
+      // The error is only cleared once the retry actually succeeds, so the
+      // error view keeps showing the in-button spinner while it is in flight.
+      if (mounted) {
+        setState(() {
+          _cached = refreshed;
+          _loadError = null;
+        });
+      }
     } on UnauthorizedException {
       // 401 — session expired; redirect to login instead of showing retry.
       if (mounted) {
@@ -102,131 +142,329 @@ class _HomePageState extends State<HomePage> {
       }
       return;
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e);
+      if (mounted) setState(() => _loadError = e);
     } finally {
-      if (mounted) setState(() {
-        _loading = false;
-        _retrying = false;
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _retrying = false;
+        });
+      }
+    }
+  }
+
+  /// Pull-to-refresh: drop the cached balances and reload all three slices.
+  Future<void> _refreshAll() async {
+    if (_refreshing) return;
+
+    setState(() {
+      _refreshing = true;
+      _refreshFailed = false;
+    });
+
+    try {
+      await _cache.invalidate(widget.walletAddress);
+
+      final results = await Future.wait(<Future<Object?>>[
+        _fetchBalances(),
+        _dataSource.fetchTransactions(),
+        _dataSource.fetchNotifications(),
+      ]);
+
+      final balances = results[0]! as Map<String, dynamic>;
+      await _cache.write(widget.walletAddress, balances);
+      final refreshed = await _cache.read(widget.walletAddress);
+      if (!mounted) return;
+      setState(() {
+        _cached = refreshed;
+        _transactions = results[1]! as List<Map<String, dynamic>>;
+        _notifications = results[2]! as List<Map<String, dynamic>>;
       });
+    } on UnauthorizedException {
+      if (mounted) {
+        context.go('/login');
+      }
+    } on Exception {
+      // Keep whatever is on screen; the banner explains why it is stale.
+      if (mounted) setState(() => _refreshFailed = true);
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  Future<Map<String, dynamic>> _fetchBalances() {
+    final fetchBalances = widget.fetchBalances;
+    return fetchBalances != null
+        ? fetchBalances()
+        : _dataSource.fetchBalances();
+  }
+
+  @override
+  void dispose() {
+    _skeletonMinTimer?.cancel();
+    if (_ownsCache) _cache.close();
+    super.dispose();
+  }
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  late final TransactionStreamService _streamService;
+  late final FlutterLocalNotificationsPlugin _notifications;
+  final List<TransactionModel> _transactions = [];
+  final Map<String, TransactionModel> _transactionMap = {};
+  TransactionConnectionState _connectionState = TransactionConnectionState.connecting;
+  StreamSubscription<List<TransactionModel>>? _transactionsSub;
+  StreamSubscription<TransactionConnectionState>? _connectionStateSub;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeServices();
+  }
+
+  Future<void> _initializeServices() async {
+    _notifications = FlutterLocalNotificationsPlugin();
+    await _initializeNotifications();
+
+    final apiClient = ApiClient();
+    apiClient.initialize();
+
+    _streamService = TransactionStreamService(
+      apiClient: apiClient,
+      envConfig: EnvConfig(),
+    );
+
+    _transactionsSub = _streamService.transactionsStream.listen(_onTransactionsUpdate);
+    _connectionStateSub = _streamService.connectionStateStream.listen(_onConnectionStateChange);
+
+    await _streamService.initialize();
+  }
+
+  Future<void> _initializeNotifications() async {
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings();
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+
+    await _notifications.initialize(initSettings);
+
+    // Create notification channel for Android
+    const channel = AndroidNotificationChannel(
+      'transaction_confirmations',
+      'Transaction Confirmations',
+      description: 'Notifications for confirmed transactions',
+      importance: Importance.high,
+    );
+    await _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+  }
+
+  void _onTransactionsUpdate(List<TransactionModel> updates) {
+    setState(() {
+      for (final transaction in updates) {
+        final existing = _transactionMap[transaction.id];
+        if (existing != null) {
+          final wasPending = existing.status == TransactionStatus.pending;
+          final isNowCompleted = transaction.status == TransactionStatus.completed;
+
+          // Show notification when pending transaction confirms
+          if (wasPending && isNowCompleted) {
+            _showTransactionConfirmedNotification(transaction);
+          }
+        }
+
+        _transactionMap[transaction.id] = transaction;
+      }
+
+      // Update list maintaining order (newest first)
+      _transactions
+        ..clear()
+        ..addAll(_transactionMap.values.toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
+    });
+  }
+
+  void _onConnectionStateChange(TransactionConnectionState state) {
+    setState(() {
+      _connectionState = state;
+    });
+  }
+
+  void _showTransactionConfirmedNotification(TransactionModel transaction) {
+    const androidDetails = AndroidNotificationDetails(
+      'transaction_confirmations',
+      'Transaction Confirmations',
+      channelDescription: 'Notifications for confirmed transactions',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const iosDetails = DarwinNotificationDetails();
+    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+
+    _notifications.show(
+      transaction.id.hashCode,
+      'Transaction Confirmed',
+      '${transaction.asset} ${transaction.amount} sent to ${_truncateAddress(transaction.destination)}',
+      details,
+      payload: transaction.id,
+    );
+  }
+
+  String _truncateAddress(String address) {
+    if (address.length <= 10) return address;
+    return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _streamService.onAppForeground();
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        _streamService.onAppBackground();
+        break;
     }
   }
 
   @override
   void dispose() {
-    if (_ownsCache) _cache.close();
+    WidgetsBinding.instance.removeObserver(this);
+    _transactionsSub?.cancel();
+    _connectionStateSub?.cancel();
+    _streamService.dispose();
     super.dispose();
   }
 
-  Widget _buildBalances() {
-    return RefreshIndicator(
-      onRefresh: () => _loadBalances(invalidate: true),
-      child: ListView(
-        padding: const EdgeInsets.all(20),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Ignition Pay'),
+        centerTitle: true,
+        actions: [
+          _ConnectionStatusIndicator(state: _connectionState),
+          const SizedBox(width: 16),
+        ],
+      ),
+      body: _transactions.isEmpty
+          ? _buildEmptyState()
+          : _buildTransactionList(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/send'),
+        tooltip: 'Send Payment',
+        child: const Icon(Icons.send),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (_cached?.isStale ?? false)
-            const Text('Showing cached balances', style: TextStyle(color: Colors.orange)),
-          if (_refreshing) const LinearProgressIndicator(),
+          Icon(
+            Icons.receipt_long_outlined,
+            size: 80,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(height: 16),
-          if (_cached == null)
-            const Text('No cached balances yet', style: TextStyle(fontSize: 18))
-          else
-            ..._cached!.balances.entries.map(
-              (entry) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(entry.key),
-                trailing: Text('${entry.value}'),
-              ),
-            ),
+          Text(
+            'No transactions yet',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Your transaction history will appear here',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: () => context.push('/send'),
+            icon: const Icon(Icons.send),
+            label: const Text('Send Payment'),
+          ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final platform = Theme.of(context).platform;
-    final sections = _buildSections();
-    final useCupertino =
-        platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ignition Pay'),
-        centerTitle: true,
+  Widget _buildTransactionList() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        // Trigger a manual poll
+        await _streamService.pollTransactions();
+      },
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: _transactions.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          final transaction = _transactions[index];
+          return _AnimatedTransactionTile(transaction: transaction);
+        },
       ),
-      body: RefreshIndicator(
-        onRefresh: () => _loadBalances(invalidate: true),
-        child: _buildBody(),
-      ),
+      body: _loadError != null
+          ? ErrorStateView(
+              key: const Key('home_error_state'),
+              error: _loadError!,
+              retrying: _retrying,
+              onRetry: () => _loadInitialBalances(isRetry: true),
+            )
+          : _buildRefreshableBody(),
     );
   }
 
-  Widget _buildBody() {
-    // Show error state when the fetch failed and we have no cache to fall back
-    // on, or when a previous cached load followed by a failure should still
-    // surface the error UI.
-    if (_error != null) {
-      return ListView(
-        children: [
-          // If stale data is available, show it above the error banner so the
-          // user still sees something useful.
-          if (_cached != null) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Showing cached balances',
-                    style: TextStyle(color: Colors.orange),
-                  ),
-                  const SizedBox(height: 8),
-                  ..._cached!.balances.entries.map(
-                    (entry) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(entry.key),
-                      trailing: Text('${entry.value}'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          ErrorStateView(
-            key: const Key('home_error_state'),
-            error: _error!,
-            retrying: _retrying,
-            onRetry: () => _loadBalances(invalidate: true, isRetry: true),
+  /// Material [RefreshIndicator] on Android, Cupertino sliver refresh control
+  /// on iOS/macOS.
+  Widget _buildRefreshableBody() {
+    final platform = Theme.of(context).platform;
+    final useCupertino =
+        platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
+
+    if (useCupertino) {
+      return CustomScrollView(
+        slivers: [
+          CupertinoSliverRefreshControl(onRefresh: _refreshAll),
+          SliverList(
+            delegate: SliverChildListDelegate(_buildSections()),
           ),
         ],
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        if (_cached?.isStale ?? false)
-          const Text(
-            'Showing cached balances',
-            style: TextStyle(color: Colors.orange),
-          ),
-        if (_loading) const LinearProgressIndicator(),
-        const SizedBox(height: 16),
-        if (_cached == null)
-          const Text('No cached balances yet', style: TextStyle(fontSize: 18))
-        else
-          ..._cached!.balances.entries.map(
-            (entry) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(entry.key),
-              trailing: Text('${entry.value}'),
-            ),
-          ),
-      ],
+    return RefreshIndicator(
+      onRefresh: _refreshAll,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        children: _buildSections(),
+      ),
     );
   }
 
   List<Widget> _buildSections() {
+    return <Widget>[
+      if (_refreshFailed) ...[
+        const AppErrorBanner(
+          message: 'Could not refresh. Showing the latest saved data.',
+        ),
+    if (_showingSkeleton) return const [HomeSkeleton()];
+
     return [
       if (_error != null) ...[
         AppErrorBanner(message: _error!),
@@ -242,18 +480,18 @@ class _HomePageState extends State<HomePage> {
           'Showing cached balances',
           style: TextStyle(color: Colors.orange),
         ),
-      if (_refreshing) const LinearProgressIndicator(),
+      if (_refreshing || _loading) const LinearProgressIndicator(),
       const SizedBox(height: 16),
       if (_cached == null)
         const Text('No cached balances yet', style: TextStyle(fontSize: 18))
       else
         ..._cached!.balances.entries.map(
-          (entry) => ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(entry.key),
-            trailing: Text('${entry.value}'),
-          ),
-        ),
+              (entry) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(entry.key),
+                trailing: Text('${entry.value}'),
+              ),
+            ),
       if (_transactions.isNotEmpty) ...[
         const SizedBox(height: 16),
         const Text(
@@ -286,4 +524,3 @@ class _HomePageState extends State<HomePage> {
     ];
   }
 }
-

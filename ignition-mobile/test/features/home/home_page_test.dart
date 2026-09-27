@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:ignition_mobile/core/design_system/error_state_view.dart';
+import 'package:ignition_mobile/core/local/balance_cache.dart';
 import 'package:ignition_mobile/core/network/api_exception.dart';
 import 'package:ignition_mobile/features/home/pages/home_page.dart';
 
@@ -29,6 +30,9 @@ GoRouter _router({
         builder: (_, __) => HomePage(
           walletAddress: 'test-wallet',
           fetchBalances: fetchFn,
+          balanceCache: BalanceCache(
+            executor: executor ?? NativeDatabase.memory(),
+          ),
         ),
       ),
       GoRoute(
