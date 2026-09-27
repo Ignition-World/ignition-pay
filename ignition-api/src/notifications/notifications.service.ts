@@ -7,6 +7,10 @@ import {
   isChannelEnabled,
   normalizeNotificationPreferences,
 } from './notification-preferences';
+import {
+  NotificationDedupStore,
+  PENDING_MARKER,
+} from './notification-dedup.store';
 
 export interface CreateNotificationParams {
   userId: string;
@@ -21,7 +25,71 @@ export interface CreateNotificationParams {
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly dedup: NotificationDedupStore,
+  ) {}
+
+  /**
+   * Deduplication key for an event, or null when the event cannot be deduplicated.
+   *
+   * An event with no `relatedId` has nothing identifying it beyond user and type,
+   * so collapsing on that alone would silently drop genuinely distinct
+   * notifications. Those pass through, matching the pre-existing behaviour of the
+   * database guard below.
+   */
+  private dedupKeyFor(params: CreateNotificationParams): string | null {
+    if (!params.relatedId) return null;
+    return this.dedup.key(params.userId, params.type, params.relatedId);
+  }
+
+  /** Start of the current deduplication window. */
+  private windowStart(): Date {
+    return new Date(Date.now() - this.dedup.windowMs);
+  }
+
+  /**
+   * Bumps the `createdAt` of the notification a duplicate event refers to, so the
+   * user's list resurfaces it instead of gaining a second copy.
+   *
+   * @param params - The duplicate event.
+   * @param existingValue - Value stored on the dedup key, if any.
+   * @returns The bumped row, or null when no row is found inside the window.
+   */
+  private async bumpExisting(
+    params: CreateNotificationParams,
+    existingValue?: string,
+  ) {
+    if (existingValue && existingValue !== PENDING_MARKER) {
+      const bumped = await this.prisma.notification
+        .update({
+          where: { id: existingValue },
+          data: { createdAt: new Date() },
+        })
+        .catch(() => null);
+
+      if (bumped) return bumped;
+    }
+
+    // The owner had not recorded an id yet, or the row has since been deleted.
+    const existing = await this.prisma.notification.findFirst({
+      where: {
+        userId: params.userId,
+        type: params.type,
+        relatedId: params.relatedId,
+        createdAt: { gte: this.windowStart() },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+
+    if (!existing) return null;
+
+    return this.prisma.notification.update({
+      where: { id: existing.id },
+      data: { createdAt: new Date() },
+    });
+  }
 
   /**
    * Persist a notification row, skipping the write when an identical
@@ -116,34 +184,66 @@ export class NotificationsService {
       return null;
     }
 
-    // Idempotency check: skip if a matching notification already exists.
+    // #623 — atomic Redis claim on sha256(userId:eventType:resourceId). The first
+    // caller inside the window creates the notification; every other caller bumps
+    // the existing one instead of adding a second copy.
+    const dedupKey = this.dedupKeyFor(params);
+
+    if (dedupKey) {
+      const { claimed, existing } = await this.dedup.claim(dedupKey);
+
+      if (!claimed) {
+        this.logger.debug(
+          `Duplicate notification collapsed: [${params.type}] userId=${params.userId} relatedId=${params.relatedId}`,
+        );
+        return this.bumpExisting(params, existing);
+      }
+    }
+
+    // Second line of defence, scoped to the same window. The Redis claim covers
+    // concurrent callers; this covers a Redis outage or eviction, where claim()
+    // deliberately fails open. Scoping it to the window is what makes the window
+    // real — an unbounded check would suppress a legitimate notification about the
+    // same resource forever.
     if (params.relatedId) {
       const existing = await this.prisma.notification.findFirst({
         where: {
           userId: params.userId,
           type: params.type,
           relatedId: params.relatedId,
+          createdAt: { gte: this.windowStart() },
         },
         select: { id: true },
       });
 
       if (existing) {
         this.logger.debug(
-          `Duplicate notification skipped: [${params.type}] userId=${params.userId} relatedId=${params.relatedId}`,
+          `Duplicate notification skipped at the database: [${params.type}] userId=${params.userId} relatedId=${params.relatedId}`,
         );
-        return existing;
+        return this.bumpExisting(params, existing.id);
       }
     }
 
-    const notification = await this.prisma.notification.create({
-      data: {
-        userId: params.userId,
-        type: params.type,
-        title: params.title,
-        message: params.message,
-        relatedId: params.relatedId,
-      },
-    });
+    let notification;
+    try {
+      notification = await this.prisma.notification.create({
+        data: {
+          userId: params.userId,
+          type: params.type,
+          title: params.title,
+          message: params.message,
+          relatedId: params.relatedId,
+        },
+      });
+    } catch (error) {
+      // Release the claim so a retry is not silently swallowed for an hour.
+      if (dedupKey) await this.dedup.release(dedupKey);
+      throw error;
+    }
+
+    if (dedupKey) {
+      await this.dedup.recordNotificationId(dedupKey, notification.id);
+    }
 
     this.logger.log(
       `Notification created: ${notification.id} [${notification.type}] for user ${params.userId}`,
@@ -162,7 +262,7 @@ export class NotificationsService {
    */
   async createMany(paramsList: CreateNotificationParams[]) {
     if (paramsList.length === 0) {
-      return { count: 0 };
+      return { count: 0, deduplicated: 0 };
     }
 
     const allowed = (
@@ -181,24 +281,71 @@ export class NotificationsService {
       .map((entry) => entry.params);
 
     if (allowed.length === 0) {
-      return { count: 0 };
+      return { count: 0, deduplicated: 0 };
     }
 
-    const result = await this.prisma.notification.createMany({
-      data: allowed.map((params) => ({
-        userId: params.userId,
-        type: params.type,
-        title: params.title,
-        message: params.message,
-        relatedId: params.relatedId,
-      })),
-    });
+    // #623 — this is the path the issue is about. A campaign milestone fans out to
+    // every backer at once, and the same user can appear several times in one
+    // batch, so the claim has to happen per entry before the insert.
+    const claims = await Promise.all(
+      allowed.map(async (params) => {
+        const dedupKey = this.dedupKeyFor(params);
+        if (!dedupKey) return { params, dedupKey: null, claimed: true };
 
-    this.logger.log(
-      `Notifications batched: ${result.count} row(s) in a single insert`,
+        const { claimed, existing } = await this.dedup.claim(dedupKey);
+        return { params, dedupKey, claimed, existing };
+      }),
     );
 
-    return result;
+    const fresh = claims.filter((entry) => entry.claimed);
+    const duplicates = claims.filter((entry) => !entry.claimed);
+
+    // Bump every duplicate so the recipient's list resurfaces the notification
+    // they already have rather than gaining a second copy.
+    await Promise.all(
+      duplicates.map((entry) =>
+        this.bumpExisting(entry.params, entry.existing).catch(() => null),
+      ),
+    );
+
+    if (fresh.length === 0) {
+      this.logger.log(
+        `Notifications batched: 0 row(s); ${duplicates.length} collapsed by dedup`,
+      );
+      return { count: 0, deduplicated: duplicates.length };
+    }
+
+    let result: { count: number };
+    try {
+      result = await this.prisma.notification.createMany({
+        data: fresh.map(({ params }) => ({
+          userId: params.userId,
+          type: params.type,
+          title: params.title,
+          message: params.message,
+          relatedId: params.relatedId,
+        })),
+      });
+    } catch (error) {
+      // Release every key this batch claimed, so the failed fan-out can be retried.
+      await Promise.all(
+        fresh
+          .filter((entry) => entry.dedupKey)
+          .map((entry) => this.dedup.release(entry.dedupKey as string)),
+      );
+      throw error;
+    }
+
+    // `createMany` does not return ids, so the claimed keys keep the pending
+    // marker. A later duplicate resolves the row by its (userId, type, relatedId)
+    // inside the window instead — see bumpExisting.
+
+    this.logger.log(
+      `Notifications batched: ${result.count} row(s) in a single insert; ` +
+        `${duplicates.length} collapsed by dedup`,
+    );
+
+    return { count: result.count, deduplicated: duplicates.length };
   }
 
   async sendAlert(params: {

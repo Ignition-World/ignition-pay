@@ -1,6 +1,7 @@
 'use client'
 
 import { Navigation } from './navigation'
+import { OnboardingTour } from './onboarding-tour'
 import { LanguageProvider } from '@/lib/i18n'
 
 export function AppWrapper({ children }: { children: React.ReactNode }) {
@@ -13,7 +14,7 @@ export function AppWrapper({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      <OnboardingTour />
     </LanguageProvider>
   )
 }
-
