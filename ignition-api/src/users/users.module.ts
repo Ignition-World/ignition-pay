@@ -11,6 +11,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsService } from '../auth/permissions/permissions.service';
 import { PermissionsGuard } from '../auth/permissions/permissions.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { EmailVerificationTokenScheduler } from './email-verification-token.scheduler';
 import { QueueModule } from '../queue/queue.module';
 import { DashboardCacheService } from './dashboard-cache.service';
 import { DashboardCacheProcessor } from '../queue/processors/dashboard-cache.processor';
@@ -45,6 +46,8 @@ import { DataExportModule } from './data-export.module';
     RolesGuard,
     PermissionsService,
     PermissionsGuard,
+    // Issue #617 — purges spent email verification tokens on a timer.
+    EmailVerificationTokenScheduler,
   ],
   exports: [UsersService, DashboardCacheService],
 })

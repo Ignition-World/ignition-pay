@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { createHash } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import Keyv from 'keyv';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1121,6 +1122,274 @@ describe('UsersService profile calculations', () => {
           campaigns: { where: { status: 'ACTIVE' } },
         },
       });
+    });
+  });
+});
+
+/**
+ * Issue #617 — email verification token race.
+ *
+ * The regression these tests guard against: `confirmEmail` used to
+ * read-then-write, so two concurrent confirmations of the same token could
+ * both observe `usedAt: null` and both succeed. The claim is now a single
+ * conditional `updateMany`; a zero-row result means the token was already
+ * consumed.
+ */
+describe('UsersService confirmEmail (Issue #617)', () => {
+  interface TokenRow {
+    id: string;
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    usedAt: Date | null;
+  }
+
+  let prisma: {
+    user: {
+      update: jest.Mock;
+      findUnique: jest.Mock;
+      create: jest.Mock;
+    };
+    passwordHistory: { create: jest.Mock };
+    emailVerificationToken: {
+      findUnique: jest.Mock;
+      updateMany: jest.Mock;
+      deleteMany: jest.Mock;
+      create: jest.Mock;
+    };
+  };
+  let service: UsersService;
+  let rows: TokenRow[];
+
+  const sha256 = (value: string) =>
+    createHash('sha256').update(value).digest('hex');
+
+  function activeRow(): TokenRow {
+    return {
+      id: 'token-row-1',
+      userId: 'user-1',
+      tokenHash: sha256('valid-token'),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      usedAt: null,
+    };
+  }
+
+  /**
+   * Applies the same predicate Prisma would apply server-side: only rows that
+   * are unused and unexpired transition to `usedAt`. This is what makes the
+   * concurrent test meaningful — the loser of the race gets `count: 0`.
+   */
+  function applyUpdateMany(args: {
+    where: { tokenHash: string; usedAt: null; expiresAt: { gt: Date } };
+  }) {
+    let count = 0;
+    rows = rows.map((row) => {
+      const matches =
+        row.tokenHash === args.where.tokenHash &&
+        row.usedAt === args.where.usedAt &&
+        row.expiresAt > args.where.expiresAt.gt;
+      if (!matches) return row;
+      count += 1;
+      return { ...row, usedAt: args.where.expiresAt.gt };
+    });
+    return Promise.resolve({ count });
+  }
+
+  beforeEach(() => {
+    rows = [activeRow()];
+
+    prisma = {
+      user: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+      passwordHistory: { create: jest.fn().mockResolvedValue({}) },
+      emailVerificationToken: {
+        // The find is deliberately NOT filtered, matching the implementation:
+        // it only resolves the row so the caller can learn the user id.
+        findUnique: jest.fn(async () => ({ ...rows[0] })),
+        updateMany: jest.fn((args: any) => applyUpdateMany(args)),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    service = new UsersService(
+      prisma as unknown as PrismaService,
+      { sign: jest.fn() } as unknown as JwtService,
+      new ConfigService({
+        PASSWORD_BCRYPT_ROUNDS: '4',
+        EMAIL_TOKEN_EXPIRES_HOURS: '24',
+        EMAIL_TOKEN_RETENTION_DAYS: '30',
+      }),
+      { get: jest.fn(), set: jest.fn(), delete: jest.fn() } as unknown as Keyv,
+      { createSession: jest.fn() } as unknown as SessionService,
+    );
+  });
+
+  it('rejects an empty token', async () => {
+    await expect(service.confirmEmail('')).rejects.toThrow('Token is required');
+    expect(
+      prisma.emailVerificationToken.updateMany,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('claims the token and marks the email verified', async () => {
+    const result = await service.confirmEmail('valid-token');
+
+    expect(result).toEqual({ message: 'Email confirmed successfully.' });
+    expect(prisma.emailVerificationToken.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.emailVerificationToken.updateMany).toHaveBeenCalledWith({
+      where: {
+        tokenHash: sha256('valid-token'),
+        usedAt: null,
+        expiresAt: { gt: expect.any(Date) },
+      },
+      data: { usedAt: expect.any(Date) },
+    });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { emailVerifiedAt: expect.any(Date) },
+    });
+  });
+
+  it('rejects an unknown token without touching the database', async () => {
+    prisma.emailVerificationToken.findUnique.mockResolvedValue(null);
+
+    await expect(service.confirmEmail('nope')).rejects.toThrow(
+      'Invalid or expired token',
+    );
+    expect(prisma.emailVerificationToken.updateMany).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a token whose claim matched zero rows (already used)', async () => {
+    prisma.emailVerificationToken.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.confirmEmail('valid-token')).rejects.toThrow(
+      'Invalid or expired token',
+    );
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects an expired token', async () => {
+    rows = [
+      {
+        ...activeRow(),
+        expiresAt: new Date(Date.now() - 60 * 1000),
+      },
+    ];
+
+    await expect(service.confirmEmail('valid-token')).rejects.toThrow(
+      'Invalid or expired token',
+    );
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The race itself: two confirmations in flight for the same token. Only one
+   * conditional update may match the `usedAt: null` row, so exactly one call
+   * succeeds and the other is rejected.
+   */
+  it('lets exactly one of two concurrent confirmations succeed', async () => {
+    const results = await Promise.allSettled([
+      service.confirmEmail('valid-token'),
+      service.confirmEmail('valid-token'),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(
+      fulfilled[0].status === 'fulfilled' && fulfilled[0].value,
+    ).toEqual({ message: 'Email confirmed successfully.' });
+    expect(
+      rejected[0].status === 'rejected' && rejected[0].reason,
+    ).toBeInstanceOf(BadRequestException);
+
+    // The user is verified exactly once, not twice.
+    expect(prisma.user.update).toHaveBeenCalledTimes(1);
+    expect(rows[0].usedAt).toBeInstanceOf(Date);
+  });
+
+  it('does not re-verify the user when the same token is replayed', async () => {
+    await service.confirmEmail('valid-token');
+    await expect(service.confirmEmail('valid-token')).rejects.toThrow(
+      'Invalid or expired token',
+    );
+    expect(prisma.user.update).toHaveBeenCalledTimes(1);
+  });
+
+  describe('purgeExpiredEmailVerificationTokens', () => {
+    /** Reads back the cutoff date the service passed to Prisma. */
+    function cutoffFromDeleteArgs(): Date {
+      const args = prisma.emailVerificationToken.deleteMany.mock
+        .calls[0][0] as { where: { OR: { expiresAt: { lt: Date } }[] } };
+      return args.where.OR[0].expiresAt.lt;
+    }
+
+    const daysAgo = (date: Date) =>
+      (Date.now() - date.getTime()) / (24 * 60 * 60 * 1000);
+
+    it('deletes rows older than the retention cutoff and returns the count', async () => {
+      prisma.emailVerificationToken.deleteMany.mockResolvedValue({ count: 7 });
+
+      await expect(
+        service.purgeExpiredEmailVerificationTokens(),
+      ).resolves.toBe(7);
+
+      expect(daysAgo(cutoffFromDeleteArgs())).toBeCloseTo(30, 1);
+    });
+
+    it('honours an explicit retention window', async () => {
+      prisma.emailVerificationToken.deleteMany.mockResolvedValue({ count: 1 });
+
+      await service.purgeExpiredEmailVerificationTokens(1);
+
+      expect(daysAgo(cutoffFromDeleteArgs())).toBeCloseTo(1, 1);
+    });
+  });
+
+  describe('register', () => {
+    beforeEach(() => {
+      // The claim-predicate fake above assumes a `{ tokenHash, usedAt, expiresAt }`
+      // argument; registration revokes with `{ userId, usedAt }` instead.
+      prisma.emailVerificationToken.updateMany = jest
+        .fn()
+        .mockResolvedValue({ count: 0 });
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({ id: 'user-1' } as any);
+      bcryptMock.hash.mockResolvedValue('hash:x' as never);
+    });
+
+    it('invalidates any previously issued token before creating a new one', async () => {
+      await service.register(
+        'newuser@example.com',
+        'GBKXNRTZQVD6CNOQNRZVMJVQ4ZQ5KABCDEF',
+        'ValidPassw0rd!',
+      );
+
+      expect(prisma.emailVerificationToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', usedAt: null },
+        data: { usedAt: expect.any(Date) },
+      });
+      expect(prisma.emailVerificationToken.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          tokenHash: expect.any(String),
+          expiresAt: expect.any(Date),
+        },
+      });
+
+      // The revocation must happen before the replacement is issued.
+      const invalidateOrder =
+        prisma.emailVerificationToken.updateMany.mock.invocationCallOrder[0];
+      const createOrder =
+        prisma.emailVerificationToken.create.mock.invocationCallOrder[0];
+      expect(invalidateOrder).toBeLessThan(createOrder);
     });
   });
 });
