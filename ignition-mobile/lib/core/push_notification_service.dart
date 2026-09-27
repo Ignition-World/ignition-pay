@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 
+import 'bootstrap/lazy_firebase.dart';
 /// Callback invoked when the user taps a delivered push notification.
 ///
 /// Wired in `main.dart` to the notification tap coordinator, which stores the
@@ -57,6 +58,10 @@ class PushNotificationService {
   }
 
   Future<void> _initialize() async {
+    // Firebase Core is no longer started during app start-up (#684); make sure
+    // it exists before the first Firebase plugin call.
+    await LazyFirebase.ensureInitialized();
+
     if (!_backgroundHandlerRegistered) {
       // The background entry point belongs to the isolate, not to an app widget.
       FirebaseMessaging.onBackgroundMessage(
