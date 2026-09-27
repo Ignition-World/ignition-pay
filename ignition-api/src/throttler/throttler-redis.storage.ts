@@ -51,7 +51,8 @@ export class ThrottlerRedisStorage
         totalHits: limit + 1,
         timeToExpire: 0,
         isBlocked: true,
-        timeToBlockExpire: Math.max(0, blockTtl),
+        // ThrottlerStorage contract: expiry values are in seconds.
+        timeToBlockExpire: Math.ceil(Math.max(0, blockTtl) / 1000),
       };
     }
 
@@ -78,6 +79,11 @@ export class ThrottlerRedisStorage
       timeToBlockExpire = blockMs;
     }
 
-    return { totalHits, timeToExpire, isBlocked, timeToBlockExpire };
+    return {
+      totalHits,
+      timeToExpire: Math.ceil(timeToExpire / 1000),
+      isBlocked,
+      timeToBlockExpire: Math.ceil(timeToBlockExpire / 1000),
+    };
   }
 }

@@ -1,16 +1,31 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
-import { ThrottlerException, ThrottlerGuard } from '@nestjs/throttler';
+import { Injectable, Optional } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
+import {
+  InjectThrottlerOptions,
+  InjectThrottlerStorage,
+  ThrottlerGuard,
+  ThrottlerModuleOptions,
+  ThrottlerRequest,
+  ThrottlerStorage,
+} from '@nestjs/throttler';
 import { AddressGenerationThrottleMonitorService } from './address-generation-throttle-monitor.service';
 
 @Injectable()
 export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
+  private readonly jwt = new JwtService();
+
   constructor(
-    private readonly addressGenerationThrottleMonitorService: AddressGenerationThrottleMonitorService,
+    @InjectThrottlerOptions() options: ThrottlerModuleOptions,
+    @InjectThrottlerStorage() storageService: ThrottlerStorage,
+    reflector: Reflector,
+    @Optional()
+    private readonly addressGenerationThrottleMonitorService?: AddressGenerationThrottleMonitorService,
   ) {
-    super();
+    super(options, storageService, reflector);
   }
 
-  protected async getTracker(req: Record<string, any>): Promise<string> {
+  private clientIp(req: Record<string, any>): string {
     const rawIp =
       req.headers['cf-connecting-ip'] ||
       req.headers['x-real-ip'] ||
@@ -19,32 +34,45 @@ export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
       req.socket?.remoteAddress;
 
     if (typeof rawIp === 'string') {
-      const parts = rawIp.split(',').map((ip: string) => ip.trim());
-      return parts[0];
+      return rawIp.split(',').map((ip: string) => ip.trim())[0];
     }
     return req.ip || '127.0.0.1';
   }
 
-  async handleRequest(
-    context: ExecutionContext,
-    limit: number,
-    ttl: number,
-    throttlerName: string,
-  ): Promise<boolean> {
-    const req = context.switchToHttp().getRequest();
-    const tracker = await this.getTracker(req);
-    const key = `${throttlerName}:${tracker}`;
-    const { totalHits, isBlocked } = await this.storage.increment(
-      key,
-      ttl,
-      limit,
-      0,
-      throttlerName,
-    );
+  /**
+   * Counters are keyed per user when the request carries a valid access
+   * token, otherwise per client IP.
+   */
+  protected async getTracker(req: Record<string, any>): Promise<string> {
+    const authz = req.headers?.authorization;
+    const secret = process.env.JWT_SECRET;
+    if (secret && typeof authz === 'string' && /^Bearer\s+/i.test(authz)) {
+      try {
+        const payload = this.jwt.verify<{ sub?: string }>(
+          authz.replace(/^Bearer\s+/i, ''),
+          { secret },
+        );
+        if (payload?.sub) return `user:${payload.sub}`;
+      } catch {
+        // invalid/expired token → fall back to IP
+      }
+    }
+    return `ip:${this.clientIp(req)}`;
+  }
+
+  protected async handleRequest(requestProps: ThrottlerRequest): Promise<boolean> {
+    const { context, limit, ttl, throttler, blockDuration, getTracker, generateKey } =
+      requestProps;
+    const { req, res } = this.getRequestResponse(context);
+    const name = throttler.name ?? 'default';
+    const tracker = await getTracker(req, context);
+    const key = generateKey(context, tracker, name);
+    const { totalHits, timeToExpire, isBlocked, timeToBlockExpire } =
+      await this.storageService.increment(key, ttl, limit, blockDuration, name);
 
     if (req.originalUrl?.includes('/addresses/generate')) {
-      await this.addressGenerationThrottleMonitorService.recordEvent({
-        ip: tracker,
+      await this.addressGenerationThrottleMonitorService?.recordEvent({
+        ip: this.clientIp(req),
         endpoint: req.originalUrl,
         count: totalHits,
         limit,
@@ -54,9 +82,22 @@ export class ThrottlerBehindProxyGuard extends ThrottlerGuard {
     }
 
     if (isBlocked) {
-      throw new ThrottlerException('Too Many Requests');
+      res.header('Retry-After', String(Math.max(1, Math.ceil(timeToBlockExpire))));
+      await this.throwThrottlingException(context, {
+        limit,
+        ttl,
+        key,
+        tracker,
+        totalHits,
+        timeToExpire,
+        isBlocked,
+        timeToBlockExpire,
+      });
     }
 
+    res.header('X-RateLimit-Limit', String(limit));
+    res.header('X-RateLimit-Remaining', String(Math.max(0, limit - totalHits)));
+    res.header('X-RateLimit-Reset', String(Math.ceil(timeToExpire)));
     return true;
   }
 }
