@@ -15,6 +15,7 @@ integration_test/
 ├── scenarios/
 │   ├── app_launch_test.dart       # boot + GoRouter 404 + dryRun of declared paths
 │   ├── deep_link_test.dart        # ignitionpay:// + https://ignitionpay.com/...
+│   ├── notification_tap_test.dart # push tap -> stored notification -> navigation
 │   └── auth_flow_test.dart        # AuthService contract via mocked Dio
 └── platform/
     ├── android_driver_test.dart   # notification channel + FCM background + foreground
@@ -29,8 +30,8 @@ flutter test integration_test/app_test.dart \
     --dart-define=SCENARIO=app_launch
 ```
 
-Available scenarios: `app_launch`, `deep_link`, `auth_flow`, `android`, `ios`,
-or `all` (default).
+Available scenarios: `app_launch`, `deep_link`, `auth_flow`,
+`notification_tap`, `android`, `ios`, or `all` (default).
 
 ## Run everything
 
