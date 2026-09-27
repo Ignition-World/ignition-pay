@@ -641,6 +641,13 @@ model AnchorConfig {
   algorithm        WebhookAlgorithm @default(HMAC_SHA256)
   /// HMAC_SHA256: hex- or base64-encoded shared secret
   webhookSecret    String?
+  /// Issue #618: the retired HMAC secret, accepted only while the grace period
+  /// below is still open, so rotating a secret does not drop in-flight
+  /// deliveries. Set both rotation columns together, then clear them once the
+  /// grace period has passed.
+  previousWebhookSecret String?
+  /// Issue #618: when previousWebhookSecret stops being accepted.
+  previousWebhookSecretExpiresAt DateTime?
   /// RSA_SHA256 / ECDSA_SHA256: PEM-encoded public key
   webhookPublicKey String?
   isActive         Boolean          @default(true)

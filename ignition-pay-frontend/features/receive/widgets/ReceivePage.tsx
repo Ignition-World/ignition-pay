@@ -10,6 +10,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Copy, Share2 } from 'lucide-react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/empty-state'
 import { QRCodeDisplay, type QRCodeDisplayHandle } from './QRCodeDisplay'
 
 // ---------------------------------------------------------------------------
@@ -154,9 +155,12 @@ export function ReceivePage({ address: addressProp }: ReceivePageProps) {
                 handleRef={qrHandleRef}
               />
             ) : (
-              <div className="w-64 h-64 flex items-center justify-center rounded-lg border-8 border-primary bg-white text-muted-foreground text-sm text-center p-4">
-                No wallet address found. Please log in to see your QR code.
-              </div>
+              <EmptyState
+                illustration="receive"
+                title="No wallet address yet"
+                description="Sign in to load your Stellar address and start receiving assets."
+                className="w-full border-0 bg-transparent p-0 sm:p-0"
+              />
             )}
             <div className="text-center">
               <p className="text-muted-foreground text-sm">

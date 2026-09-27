@@ -63,6 +63,7 @@ export function ThemeToggle() {
       role="radiogroup"
       aria-label="Theme selector"
       aria-orientation="horizontal"
+      data-tour="appearance"
       className="inline-flex h-9 items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5 shadow-sm"
     >
       {modes.map((m) => {
@@ -78,7 +79,7 @@ export function ThemeToggle() {
             title={m.label}
             onClick={() => setMode(m.value)}
             className={cn(
-              'relative flex h-8 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-all duration-200',
+              'relative flex h-8 min-w-11 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-all duration-200',
               'outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
               isActive
                 ? 'bg-background text-foreground shadow-sm ring-1 ring-border'

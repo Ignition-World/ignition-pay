@@ -26,6 +26,44 @@ export async function updatePreferences(prefs: UserPreferences): Promise<void> {
   await patchMe({ preferences: JSON.stringify(prefs) })
 }
 
+/**
+ * Loads the current user's saved preferences. The backend may return the
+ * `preferences` payload either as a JSON string or an object, so both shapes
+ * are normalised. Missing or unparseable values resolve to `{}` so callers can
+ * fall back to defaults.
+ */
+export async function fetchUserPreferences(): Promise<UserPreferences> {
+  const res = await fetch(
+    `${getApiBase()}${API_PREFIX}${API_ENDPOINTS.users.me}`,
+    {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+    },
+  )
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new Error(data?.message ?? 'Failed to load preferences')
+  }
+
+  const data = (await res.json().catch(() => null)) as {
+    preferences?: unknown
+  } | null
+  const raw = data?.preferences
+
+  if (!raw) return {}
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as UserPreferences
+    } catch {
+      return {}
+    }
+  }
+  if (typeof raw === 'object') return raw as UserPreferences
+  return {}
+}
+
 export async function updateProfile(data: {
   displayName?: string
   avatarUrl?: string

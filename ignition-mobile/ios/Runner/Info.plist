@@ -27,6 +27,14 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 
+	<!-- QR address scanning (mobile_scanner). -->
+	<key>NSCameraUsageDescription</key>
+	<string>Ignition Pay uses the camera to scan payment QR codes.</string>
+
+	<!-- Biometric app unlock (local_auth). -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to unlock Ignition Pay.</string>
+
 	<!-- Custom URL scheme: ignitionpay:// -->
 	<key>CFBundleURLTypes</key>
 	<array>

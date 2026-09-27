@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'history_data_source.dart';
-import '../widgets/history_transaction_tile.dart';
 import 'package:go_router/go_router.dart';
+import 'history_data_source.dart';
+import '../widgets/swipeable_transaction_tile.dart';
 
 class HistorySection extends StatefulWidget {
   const HistorySection({super.key});
@@ -22,7 +21,11 @@ class _HistorySectionState extends State<HistorySection> {
   bool _hasMore = true;
   String _selectedFilter = 'All';
   String _searchQuery = '';
-  
+
+  /// IDs that have been swiped away and are pending the API call (or undo).
+  /// Kept so that an undo can restore the item without a re-fetch.
+  final Set<String> _dismissedIds = {};
+
   static const List<String> _filters = ['All', 'Sent', 'Received', 'Pending', 'Failed', 'Confirmed'];
 
   @override
@@ -112,6 +115,34 @@ class _HistorySectionState extends State<HistorySection> {
     _loadInitialData();
   }
 
+  // ── Swipe action callbacks ───────────────────────────────────────────────
+
+  /// Removes [tx] from the state list and fires the delete API call.
+  /// Called by [SwipeableTransactionTile] after the undo window expires.
+  Future<void> _onDelete(HistoryTransaction tx) async {
+    setState(() {
+      _dismissedIds.add(tx.id);
+      _transactions.removeWhere((t) => t.id == tx.id);
+    });
+
+    // TODO(#697): replace with real API call once the delete endpoint exists.
+    // await _dataSource.deleteTransaction(tx.id);
+    await Future.delayed(Duration.zero);
+  }
+
+  /// Removes [tx] from the state list and fires the archive API call.
+  /// Called by [SwipeableTransactionTile] after the undo window expires.
+  Future<void> _onArchive(HistoryTransaction tx) async {
+    setState(() {
+      _dismissedIds.add(tx.id);
+      _transactions.removeWhere((t) => t.id == tx.id);
+    });
+
+    // TODO(#697): replace with real API call once the archive endpoint exists.
+    // await _dataSource.archiveTransaction(tx.id);
+    await Future.delayed(Duration.zero);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -196,11 +227,12 @@ class _HistorySectionState extends State<HistorySection> {
                               );
                             }
                             final tx = _transactions[index];
-                            return InkWell(
-                              onTap: () {
-                                context.push('/transaction/${tx.id}');
-                              },
-                              child: HistoryTransactionTile(transaction: tx),
+                            return SwipeableTransactionTile(
+                              key: ValueKey('tile_${tx.id}'),
+                              transaction: tx,
+                              onDelete: _onDelete,
+                              onArchive: _onArchive,
+                              onTap: () => context.push('/transaction/${tx.id}'),
                             );
                           },
                         ),

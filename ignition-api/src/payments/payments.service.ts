@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { QUEUE_PAYMENTS } from '../queue/queue.constants';
 import { PAYMENT_JOB_PROCESS, PaymentJobPayload } from '../queue/queue.jobs';
+import { DashboardCacheService } from '../users/dashboard-cache.service';
 
 export interface EstimatedFee {
   feeAmount: string;
@@ -26,6 +27,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     @InjectQueue(QUEUE_PAYMENTS)
     private readonly paymentQueue: Queue<PaymentJobPayload>,
+    private readonly dashboardCache: DashboardCacheService,
   ) {}
 
   async initiatePayment(
@@ -102,6 +104,13 @@ export class PaymentsService {
         `to=${dto.recipientAddress} amount=${dto.amount} ${dto.assetCode}`,
     );
 
+    // Issue #591 — a new transaction is a significant event: invalidate the
+    // warmed dashboard cache for both parties so the next load recomputes.
+    await this.invalidateDashboardCaches([
+      senderWallet.userId,
+      recipientWallet?.userId,
+    ]);
+
     return {
       id: transaction.id,
       status: 'queued',
@@ -115,6 +124,25 @@ export class PaymentsService {
 
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Issue #591 — invalidate the warmed dashboard cache for the given users.
+   * Failures are swallowed so a cache problem never blocks a payment.
+   */
+  private async invalidateDashboardCaches(
+    userIds: Array<string | null | undefined>,
+  ): Promise<void> {
+    const unique = [...new Set(userIds.filter((id): id is string => !!id))];
+    await Promise.all(
+      unique.map((userId) =>
+        this.dashboardCache.invalidate(userId).catch((err: any) => {
+          this.logger.warn(
+            `Failed to invalidate dashboard cache for user ${userId}: ${err?.message ?? err}`,
+          );
+        }),
+      ),
+    );
+  }
 
   /**
    * Enforces rolling 24-hour and 30-day outgoing transfer limits for a wallet.
