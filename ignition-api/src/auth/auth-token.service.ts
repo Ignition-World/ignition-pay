@@ -30,6 +30,9 @@ interface RefreshTokenPayload {
   sub: string;
   fid?: string; // Issue #226: token-family ID for reuse detection
   sid?: string;
+  // Unique per token so two rotations within the same second never produce
+  // byte-identical tokens (which would defeat reuse detection).
+  jti?: string;
   iat?: number;
   exp?: number;
 }
@@ -145,6 +148,7 @@ export class AuthTokenService {
     const refreshPayload: RefreshTokenPayload = {
       sub: user.id,
       fid,
+      jti: randomUUID(),
       ...(sessionId ? { sid: sessionId } : {}),
     };
 
@@ -308,6 +312,7 @@ export class AuthTokenService {
     const newRefreshPayload: RefreshTokenPayload = {
       sub: user.id,
       fid: currentFamilyId,
+      jti: randomUUID(),
     };
 
     const newRefreshToken = this.jwt.sign(newRefreshPayload, {

@@ -72,6 +72,27 @@ npm run start:dev
 | Queue | Background job processing |
 | Health | Service health checks |
 
+## Rate Limiting
+
+Every request falls into exactly one tier, based on its route prefix and credentials
+(see `src/throttler/throttler-tiers.ts`):
+
+| Tier | Applies to | Limit | Counter keyed by |
+|------|------------|-------|------------------|
+| `auth` | `/auth/*` | 10 req/min | client IP |
+| `public` | unauthenticated requests | 60 req/min | client IP |
+| `authenticated` | requests with `Authorization: Bearer …` or `x-api-key` | 120 req/min | user ID (from a valid JWT), else IP |
+
+Routes can add a tighter limit on top of their tier with
+`@Throttle({ strict: { limit, ttl } })` or `@Throttle({ default: { limit, ttl } })`.
+
+When a limit is exceeded the API responds `429 Too Many Requests` with a
+`Retry-After` header (seconds). Successful responses include `X-RateLimit-Limit`,
+`X-RateLimit-Remaining` and `X-RateLimit-Reset`.
+
+Limits can be overridden per environment with `THROTTLE_AUTH_LIMIT`,
+`THROTTLE_PUBLIC_LIMIT`, `THROTTLE_AUTHENTICATED_LIMIT` (and matching `*_TTL` in ms).
+
 ## Environment
 
 See `.env.example` for required environment variables.
