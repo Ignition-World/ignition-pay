@@ -87,13 +87,24 @@ export function useOptimisticTransactions() {
   )
 
   /**
-   * Removes an optimistic entry after successful backend confirmation.
-   * The real entry from backend will appear in the fetched list.
+   * Marks an optimistic entry confirmed after the backend accepts it.
    *
-   * @param optimisticId The optimistic ID to remove
+   * The entry is kept, not deleted. Deleting it made the row the user had just
+   * watched appear vanish again, because the real transaction only shows up on
+   * the next fetch — so the badge never visibly changed from Pending to
+   * Confirmed. The entry is dropped later, either by mergeOptimisticTransactions
+   * once the server's copy arrives or by the stale sweep below.
+   *
+   * @param optimisticId The optimistic ID to confirm
    */
   const reconcileEntry = useCallback((optimisticId: string) => {
-    updateEntries(globalOptimisticEntries.filter((e) => e.optimisticId !== optimisticId))
+    updateEntries(
+      globalOptimisticEntries.map((entry) =>
+        entry.optimisticId === optimisticId
+          ? { ...entry, status: 'confirmed' as const, confirmedAt: Date.now() }
+          : entry,
+      ),
+    )
   }, [])
 
   /**

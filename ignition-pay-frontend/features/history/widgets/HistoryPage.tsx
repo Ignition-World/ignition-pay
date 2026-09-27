@@ -9,6 +9,11 @@ import { TransactionRow } from '@/components/transaction-row'
 import { EmptyState } from '@/components/empty-state'
 import { useOptimisticTransactions } from '@/features/history/state'
 import { fetchTransactions } from '@/features/history/services'
+import {
+  mergeOptimisticTransactions,
+  type Transaction,
+  type OptimisticTransaction,
+} from '@/features/history/models'
 import type { Transaction, OptimisticTransaction } from '@/features/history/models'
 import {
   HISTORY_DATE_PRESETS,
@@ -201,7 +206,7 @@ export function HistoryPage() {
 
   // Recompute stats whenever the loaded transaction list changes
   useEffect(() => {
-    const allVisible = [...optimisticEntries, ...transactions] as (Transaction | OptimisticTransaction)[]
+    const allVisible = mergeOptimisticTransactions(transactions, optimisticEntries)
     setStats({
       total: allVisible.length,
       sent: allVisible.filter((tx) => tx.type === 'sent').length,
@@ -237,6 +242,9 @@ export function HistoryPage() {
   }
 
   /**
+   * Merges optimistic entries with real server data. Optimistic entries float to
+   * the top, and one is dropped as soon as the server's copy of it appears so a
+   * just-confirmed payment is not listed twice.
    * Only offer assets that actually occur in the loaded history, otherwise the
    * dropdown would list codes that can never match a result.
    */
@@ -249,10 +257,8 @@ export function HistoryPage() {
    * Merges optimistic pending entries with real server data.
    * Optimistic entries float to the top (most recent first).
    */
-  const visibleTransactions: (Transaction | OptimisticTransaction)[] = [
-    ...optimisticEntries,
-    ...transactions,
-  ]
+  const visibleTransactions: (Transaction | OptimisticTransaction)[] =
+    mergeOptimisticTransactions(transactions, optimisticEntries)
 
   const handleExport = useCallback(() => {
     if (visibleTransactions.length === 0) {
