@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Send, Zap, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Send, Zap, AlertCircle, CheckCircle2, Loader2, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
@@ -26,6 +26,8 @@ import { useWalletBalances } from '@/features/dashboard/state'
 import { useContacts, useRecentRecipients } from '@/features/send/state/recipients'
 import { RecipientInput } from './RecipientInput'
 import { SaveContactDialog } from './SaveContactDialog'
+import { queueTransaction } from '@/lib/transactionQueue'
+import { useTransactionQueueProcessor } from '@/lib/useTransactionQueueProcessor'
 
 const ADDRESS_KIND_LABELS = {
   publicKey: 'Stellar account',
@@ -57,7 +59,9 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
   const toast = useToast()
   const { contacts, saveContact } = useContacts()
   const { recents, recordRecipient } = useRecentRecipients()
+  const { processQueue } = useTransactionQueueProcessor()
   const [saveContactAddress, setSaveContactAddress] = useState<string | null>(null)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
 
   const sendableAssets: SendableAsset[] = useMemo(() => {
     if (snapshot?.assets && snapshot.assets.length > 0) {
@@ -86,6 +90,20 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
   const [isEstimatingFee, setIsEstimatingFee] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [optimisticId, setOptimisticId] = useState<string | null>(null)
+
+  // Track online/offline status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   const selectedAsset =
     sendableAssets.find((asset) => asset.code === formData.asset) ?? sendableAssets[0]
@@ -159,6 +177,50 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
   const handleConfirm = async () => {
     setIsSubmitting(true)
 
+    const senderWalletId = process.env.NEXT_PUBLIC_SENDER_WALLET_ID
+    if (!senderWalletId) throw new Error('No sender wallet is configured for payments.')
+
+    // Check if offline
+    if (!isOnline) {
+      // Queue transaction for later
+      try {
+        const queuedId = await queueTransaction({
+          recipientAddress: formData.recipient,
+          amount: formData.amount,
+          assetCode: formData.asset,
+          senderWalletId,
+        })
+
+        const txId = addOptimisticEntry({
+          type: 'sent',
+          asset: formData.asset,
+          amount: parseFloat(formData.amount),
+          recipient: formData.recipient,
+          timestamp: new Date(),
+        })
+        setOptimisticId(txId)
+
+        toast.add({
+          title: 'Payment queued',
+          description: `Your ${formData.amount} ${formData.asset} payment will be sent when you're back online.`,
+          type: 'success',
+        })
+
+        setStep('confirmed')
+        recordRecipient(formData.recipient)
+      } catch (error) {
+        toast.add({
+          title: 'Failed to queue payment',
+          description: error instanceof Error ? error.message : 'Please try again.',
+          type: 'error',
+        })
+      } finally {
+        setIsSubmitting(false)
+      }
+      return
+    }
+
+    // Online - submit immediately
     const txId = addOptimisticEntry({
       type: 'sent',
       asset: formData.asset,
@@ -169,9 +231,6 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
     setOptimisticId(txId)
 
     try {
-      const senderWalletId = process.env.NEXT_PUBLIC_SENDER_WALLET_ID
-      if (!senderWalletId) throw new Error('No sender wallet is configured for payments.')
-
       const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || API_BASE_URLS.development).replace(/\/$/, '')
       const response = await fetch(baseUrl + API_PREFIX + '/payments/' + senderWalletId, {
         method: 'POST',
@@ -196,13 +255,42 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
         type: 'success',
       })
     } catch (error) {
-      removeOptimisticEntry(txId)
-      setOptimisticId(null)
-      toast.add({
-        title: 'Transaction failed',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        type: 'error',
-      })
+      // If network error during online submission, queue it
+      if (error instanceof Error && (error.message.includes('fetch') || error.message.includes('network'))) {
+        try {
+          await queueTransaction({
+            recipientAddress: formData.recipient,
+            amount: formData.amount,
+            assetCode: formData.asset,
+            senderWalletId,
+          })
+
+          toast.add({
+            title: 'Payment queued',
+            description: `Network error occurred. Your ${formData.amount} ${formData.asset} payment will be sent when connection is restored.`,
+            type: 'success',
+          })
+
+          setStep('confirmed')
+          recordRecipient(formData.recipient)
+        } catch (queueError) {
+          removeOptimisticEntry(txId)
+          setOptimisticId(null)
+          toast.add({
+            title: 'Transaction failed',
+            description: error instanceof Error ? error.message : 'Please try again.',
+            type: 'error',
+          })
+        }
+      } else {
+        removeOptimisticEntry(txId)
+        setOptimisticId(null)
+        toast.add({
+          title: 'Transaction failed',
+          description: error instanceof Error ? error.message : 'Please try again.',
+          type: 'error',
+        })
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -319,6 +407,12 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
                 ← Back
               </Button>
             </Link>
+            {!isOnline && (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                <WifiOff size={12} />
+                Offline
+              </Badge>
+            )}
           </div>
           <h1 className="text-3xl font-bold text-foreground">Send Payment</h1>
           <p className="text-muted-foreground mt-1">

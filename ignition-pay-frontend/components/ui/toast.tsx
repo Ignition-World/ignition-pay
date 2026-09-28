@@ -46,7 +46,7 @@ function Toaster({ className, ...props }: ToastPrimitive.Viewport.Props) {
             </div>
             <ToastPrimitive.Close
               aria-label="Dismiss notification"
-              className="rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              className="rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               <X className="size-4" />
             </ToastPrimitive.Close>

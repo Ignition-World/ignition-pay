@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ConsentGate } from '@/components/consent-gate'
 import { ToastProvider, Toaster } from '@/components/ui/toast'
+import { ServiceWorkerRegistration } from '@/components/service-worker-registration'
+import { TransactionQueueProcessor } from '@/components/transaction-queue-processor'
 import { LanguageProvider } from '@/lib/i18n'
 import { themeBootstrapScript } from '@/lib/theme'
 import './globals.css'
@@ -62,6 +64,8 @@ export default function RootLayout({
 
           One tree, both providers wrapping it, one ConsentGate.
         */}
+        <ServiceWorkerRegistration />
+        <TransactionQueueProcessor />
         <LanguageProvider>
           <ToastProvider>
             {children}
