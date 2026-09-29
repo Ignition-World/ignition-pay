@@ -26,6 +26,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { useTheme } from '@/hooks/use-theme'
 import { ApiKeysSection } from './ApiKeysSection'
 import { NotificationSettings } from './NotificationSettings'
+import { KeyboardShortcutSettings } from './KeyboardShortcutSettings'
 
 import { useTranslation, type SupportedLocale } from '@/lib/i18n'
 
@@ -272,6 +273,9 @@ export function SettingsPage() {
 
         {/* Notifications Section */}
         <NotificationSettings />
+
+        {/* Keyboard Shortcuts Section */}
+        <KeyboardShortcutSettings />
 
         {/* Privacy Section */}
         <div className="bg-card rounded-xl border border-border p-8 space-y-6">

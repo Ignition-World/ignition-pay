@@ -249,7 +249,7 @@ describe('OnboardingTourRestartButton', () => {
       </>,
     )
     await waitFor(() =>
-      expect(screen.queryByText(ONBOARDING_TEPS[0].title)).not.toBeInTheDocument(),
+      expect(screen.queryByText(ONBOARDING_STEPS[0].title)).not.toBeInTheDocument(),
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Replay tour' }))

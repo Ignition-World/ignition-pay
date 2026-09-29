@@ -1,6 +1,6 @@
 import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useTheme } from '../hooks/use-theme'
+import { __resetThemeStoreForTests, useTheme } from '../hooks/use-theme'
 import { ThemeToggle } from '../components/theme-toggle'
 
 /**
@@ -40,7 +40,9 @@ function stubColorScheme() {
     },
     emitChange() {
       for (const listener of [...listeners]) {
-        listener(new Event('change') as MediaQueryListEvent)
+        // The shared listener reads `event.matches`, so the event carries the
+        // current value rather than relying on a mutable query object.
+        listener({ matches: prefersDark } as MediaQueryListEvent)
       }
     },
     listenerCount() {
@@ -49,10 +51,21 @@ function stubColorScheme() {
   }
 }
 
+/**
+ * The theme lives in module state shared by every consumer, so it outlives a
+ * test's render. Reset it between tests, as `theme-persistence.test.tsx` does.
+ */
+beforeEach(() => {
+  localStorage.clear()
+  document.documentElement.className = ''
+  __resetThemeStoreForTests()
+})
+
 describe('useTheme', () => {
   beforeEach(() => {
     localStorage.clear()
     document.documentElement.className = ''
+    __resetThemeStoreForTests()
   })
 
   afterEach(() => {
@@ -158,15 +171,22 @@ describe('useTheme', () => {
     expect(document.documentElement).toHaveClass('dark')
   })
 
-  it('stops listening for OS changes once an explicit mode is chosen', async () => {
+  it('keeps one listener and ignores OS changes once an explicit mode is chosen', async () => {
     const scheme = stubColorScheme()
     const { result } = renderHook(() => useTheme())
     await waitFor(() => expect(result.current.hydrated).toBe(true))
-    await waitFor(() => expect(scheme.listenerCount()).toBe(1))
+    // Issue #627 — one shared listener serves every consumer, however many
+    // components mount, so it is never torn down on a mode change.
+    expect(scheme.listenerCount()).toBe(1)
 
     act(() => result.current.setMode('light'))
+    act(() => {
+      scheme.setPrefersDark(true)
+      scheme.emitChange()
+    })
 
-    await waitFor(() => expect(scheme.listenerCount()).toBe(0))
+    expect(result.current.mode).toBe('light')
+    expect(document.documentElement).not.toHaveClass('dark')
   })
 
   it('falls back to the defaults when storage access throws', async () => {

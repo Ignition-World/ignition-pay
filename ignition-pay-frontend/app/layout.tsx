@@ -4,6 +4,7 @@ import { ConsentGate } from '@/components/consent-gate'
 import { ToastProvider, Toaster } from '@/components/ui/toast'
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration'
 import { TransactionQueueProcessor } from '@/components/transaction-queue-processor'
+import { KeyboardShortcutsProvider } from '@/components/keyboard-shortcuts'
 import { LanguageProvider } from '@/lib/i18n'
 import { themeBootstrapScript } from '@/lib/theme'
 import './globals.css'
@@ -68,8 +69,10 @@ export default function RootLayout({
         <TransactionQueueProcessor />
         <LanguageProvider>
           <ToastProvider>
-            {children}
-            <Toaster />
+            <KeyboardShortcutsProvider>
+              {children}
+              <Toaster />
+            </KeyboardShortcutsProvider>
             {process.env.NODE_ENV === 'production' && <ConsentGate />}
           </ToastProvider>
         </LanguageProvider>

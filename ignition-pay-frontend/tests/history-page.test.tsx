@@ -6,6 +6,20 @@ import { ToastProvider } from '../components/ui/toast'
 import { fetchTransactions } from '@/features/history/services'
 import type { Transaction } from '../features/history/models'
 
+// The active filters live in the URL, so the page reads them from
+// `useSearchParams` and writes them back with `router.replace` — which needs
+// the Next router mounted. Mock the hooks rather than the whole router.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: vi.fn(),
+    push: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+  }),
+  usePathname: () => '/history',
+  useSearchParams: () => new URLSearchParams(),
+}))
+
 vi.mock('@/features/history/services', () => ({
   fetchTransactions: vi.fn(),
 }))

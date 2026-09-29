@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import type { AssetBalance } from '@/features/dashboard/models'
 import { Sparkline } from '@/components/sparkline'
 import { MASKED_AMOUNT } from '@/hooks/use-hide-balances'
@@ -12,7 +13,7 @@ interface WalletCardProps {
 }
 
 /** Per-asset balance card: one is rendered for every asset the wallet holds. */
-export function WalletCard({ asset, hideAmounts = false }: WalletCardProps) {
+function WalletCardImpl({ asset, hideAmounts = false }: WalletCardProps) {
   const { t } = useTranslation()
   const { code, issuer, balance, value, change24h, history } = asset
   const change = change24h ?? 0
@@ -69,3 +70,33 @@ export function WalletCard({ asset, hideAmounts = false }: WalletCardProps) {
     </div>
   )
 }
+
+/**
+ * #672 — a poll swaps `snapshot.assets` for a fresh array, so the card for an
+ * unchanged holding used to re-render (and re-run `toFixed`) on every tick.
+ * This compares the fields the card actually reads, not the object identity,
+ * so an unchanged holding is skipped even though the parent re-rendered.
+ */
+function areWalletCardPropsEqual(
+  prev: WalletCardProps,
+  next: WalletCardProps,
+): boolean {
+  if (prev.hideAmounts !== next.hideAmounts) return false
+
+  const a = prev.asset
+  const b = next.asset
+  if (a === b) return true
+
+  return (
+    a.code === b.code &&
+    a.issuer === b.issuer &&
+    a.balance === b.balance &&
+    a.value === b.value &&
+    a.change24h === b.change24h &&
+    a.history === b.history
+  )
+}
+
+export const WalletCard = memo(WalletCardImpl, areWalletCardPropsEqual)
+
+WalletCard.displayName = 'WalletCard'

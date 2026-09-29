@@ -25,10 +25,6 @@ import { useTranslation } from '@/lib/i18n'
  */
 export const TRANSACTION_ROW_SHELL = 'flex items-center justify-between py-4 px-4 rounded-lg'
 
-interface TransactionRowProps {
-  transaction: Transaction | OptimisticTransaction
-}
-
 /**
  * Status badge component that handles both real and optimistic transactions.
  * Optimistic transactions show a loading spinner to indicate pending confirmation.
@@ -128,12 +124,11 @@ export function TransactionRow({ transaction, tabIndex }: TransactionRowProps) {
       href={isOptimistic ? '#' : `/transactions/${txId}`}
       data-roving-item=""
       tabIndex={tabIndex}
-      className={`flex items-center justify-between py-4 px-4 rounded-lg transition-colors border ${
+      className={`${TRANSACTION_ROW_SHELL} transition-colors border ${
         // A roving list is only usable if you can see where you are, and the row
         // had no focus styling at all.
         'outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background '
       }${
-      className={`${TRANSACTION_ROW_SHELL} transition-colors border ${
         isOptimistic
           ? 'bg-yellow-500/5 border-yellow-500/30 hover:bg-yellow-500/10'
           : 'border-transparent hover:bg-muted/50 hover:border-border'

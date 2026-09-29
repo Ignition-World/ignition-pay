@@ -591,6 +591,7 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
               </Link>
               <Button
                 type="submit"
+                data-shortcut="send"
                 className="flex-1 bg-primary hover:bg-primary/90"
                 disabled={!canReview}
               >

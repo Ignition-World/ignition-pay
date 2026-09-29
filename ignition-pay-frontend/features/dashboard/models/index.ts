@@ -1,3 +1,5 @@
+import type { Experiment } from '@/lib/ab-testing'
+
 export type AssetCategory = 'native' | 'stablecoin' | 'custom'
 
 export interface AssetBalance {
@@ -104,4 +106,15 @@ export function portfolioChange24h(assets: AssetBalance[]): number {
 
   const weighted = assets.reduce((sum, asset) => sum + asset.value * (asset.change24h ?? 0), 0)
   return weighted / total
+}
+
+/**
+ * #670 — A/B experiment for the asset grid layout. Half the users see the
+ * compact grid; the rest stay on the control. Defined here so the page and any
+ * future variant share one definition.
+ */
+export const DASHBOARD_ASSET_LAYOUT_EXPERIMENT: Experiment = {
+  id: 'dashboard-asset-layout',
+  variants: [{ id: 'control' }, { id: 'grid-compact' }],
+  trafficPercentage: 50,
 }
