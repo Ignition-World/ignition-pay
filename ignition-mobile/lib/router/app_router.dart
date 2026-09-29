@@ -9,6 +9,10 @@ import '../features/send/pages/pending_sends_page.dart';
 import '../features/send/payment_review_page.dart';
 import '../features/send/services/draft_services.dart';
 import '../features/settings/pages/security_settings_page.dart';
+import '../features/receive/receive_page.dart';
+import '../features/history/history_page.dart';
+import '../features/settings/settings_page.dart';
+import 'navigation_shell.dart';
 
 /// Maps an inbound `ignitionpay://` / universal-link URI onto an in-app
 /// location. Malformed or unsupported links resolve to the home route so the
@@ -19,11 +23,121 @@ final GoRouter appRouter = GoRouter(
   initialLocation: '/',
   debugLogDiagnostics: true, // remove in production
   routes: [
-    GoRoute(
-      path: '/',
-      name: 'home',
-      builder: (context, state) => const HomePage(),
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) {
+        return AppNavigationShell(navigationShell: navigationShell);
+      },
+      branches: [
+        // Home tab
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/',
+              name: 'home',
+              builder: (context, state) => const HomePage(),
+            ),
+          ],
+        ),
+        // Send tab
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/send',
+              name: 'send',
+              builder: (context, state) => const SecureScreenWrapper(
+                child: PaymentReviewPage(
+                  initialAddress: '',
+                  initialAmount: null,
+                  initialAsset: 'XLM',
+                ),
+              ),
+            ),
+            // Deep link: ignitionpay://pay/GABCD123?amount=10&asset=USDC
+            // or:        https://ignitionpay.com/pay/GABCD123?amount=10&asset=USDC
+            // Both schemes are normalised by [DeepLinkResolver] before reaching here.
+            GoRoute(
+              path: '/pay/:address',
+              name: 'pay',
+              builder: (context, state) {
+                final address = state.pathParameters['address']!;
+                final amount = state.uri.queryParameters['amount'];
+                final asset = state.uri.queryParameters['asset'] ?? 'XLM';
+                final memo = state.uri.queryParameters['memo'];
+                return SecureScreenWrapper(
+                  child: PaymentReviewPage(
+                    initialAddress: address,
+                    initialAmount: amount,
+                    initialAsset: asset,
+                    initialMemo: memo,
+                  ),
+                );
+              },
+            ),
+            GoRoute(
+              path: '/pending-sends',
+              name: 'pendingSends',
+              builder: (context, state) => PendingSendsPage(
+                store: DraftServices.store,
+                syncService: DraftServices.syncService,
+              ),
+            ),
+          ],
+        ),
+        // Receive tab
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/receive',
+              name: 'receive',
+              builder: (context, state) => const SecureScreenWrapper(
+                child: ReceivePage(),
+              ),
+            ),
+          ],
+        ),
+        // History tab
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/history',
+              name: 'history',
+              builder: (context, state) => const HistoryPage(),
+            ),
+            GoRoute(
+              path: '/transaction/:id',
+              name: 'transaction',
+              builder: (context, state) {
+                final txId = state.pathParameters['id']!;
+                return SecureScreenWrapper(
+                  child: Scaffold(
+                    body: Center(child: Text('Transaction: $txId')),
+                    // replace with: TransactionDetailPage(txId: txId)
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+        // Settings tab
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/settings',
+              name: 'settings',
+              builder: (context, state) => const SettingsPage(),
+            ),
+            GoRoute(
+              path: '/settings/security',
+              name: 'securitySettings',
+              builder: (context, state) => SecuritySettingsPage(
+                biometricService: BiometricServices.service,
+              ),
+            ),
+          ],
+        ),
+      ],
     ),
+    // Routes not part of bottom navigation tabs
     GoRoute(
       path: '/login',
       name: 'login',
@@ -33,76 +147,9 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
-      path: '/send',
-      name: 'send',
-      builder: (context, state) => const SecureScreenWrapper(
-        child: Scaffold(
-          body: Center(child: Text('Send Screen')), // replace with SendPage()
-        ),
-      ),
-    ),
-    GoRoute(
-      path: '/receive',
-      name: 'receive',
-      builder: (context, state) => const SecureScreenWrapper(
-        child: Scaffold(
-          body: Center(child: Text('Receive Screen')), // replace with ReceivePage()
-        ),
-      ),
-    ),
-    // Deep link: ignitionpay://pay/GABCD123?amount=10&asset=USDC
-    // or:        https://ignitionpay.com/pay/GABCD123?amount=10&asset=USDC
-    // Both schemes are normalised by [DeepLinkResolver] before reaching here.
-    GoRoute(
-      path: '/pay/:address',
-      name: 'pay',
-      builder: (context, state) {
-        final address = state.pathParameters['address']!;
-        final amount = state.uri.queryParameters['amount'];
-        final asset = state.uri.queryParameters['asset'] ?? 'XLM';
-        final memo = state.uri.queryParameters['memo'];
-        return SecureScreenWrapper(
-          child: PaymentReviewPage(
-            initialAddress: address,
-            initialAmount: amount,
-            initialAsset: asset,
-            initialMemo: memo,
-          ),
-        );
-      },
-    ),
-    GoRoute(
-      path: '/pending-sends',
-      name: 'pendingSends',
-      builder: (context, state) => PendingSendsPage(
-        store: DraftServices.store,
-        syncService: DraftServices.syncService,
-      ),
-    ),
-    GoRoute(
-      path: '/settings/security',
-      name: 'securitySettings',
-      builder: (context, state) => SecuritySettingsPage(
-        biometricService: BiometricServices.service,
-      ),
-    ),
-    GoRoute(
       path: '/notifications',
       name: 'notifications',
       builder: (context, state) => const NotificationCenterPage(),
-    ),
-    GoRoute(
-      path: '/transaction/:id',
-      name: 'transaction',
-      builder: (context, state) {
-        final txId = state.pathParameters['id']!;
-        return SecureScreenWrapper(
-          child: Scaffold(
-            body: Center(child: Text('Transaction: $txId')),
-            // replace with: TransactionDetailPage(txId: txId)
-          ),
-        );
-      },
     ),
   ],
   errorBuilder: (context, state) => Scaffold(
