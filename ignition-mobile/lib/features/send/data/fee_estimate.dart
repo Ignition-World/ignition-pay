@@ -33,7 +33,7 @@ class FeeEstimate {
   /// Formatted string showing approximate fiat equivalent (e.g. `≈ $0.01 USD` or `≈ 0.01 USD`).
   String? get formattedFiat {
     if (fiatAmount == null || fiatAmount!.isEmpty) return null;
-    final symbol = fiatCurrency == 'USD' ? '$' : '';
+    final symbol = fiatCurrency == 'USD' ? r'$' : '';
     return '≈ $symbol$fiatAmount ${fiatCurrency != 'USD' ? fiatCurrency : ''}'.trim();
   }
 
