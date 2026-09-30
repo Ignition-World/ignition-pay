@@ -137,8 +137,8 @@ describe('SendPage recipient paste button', () => {
     )
 
     // Still on the form step — a submit would have advanced to the review
-    // step, which renders a "Back to Edit" button that only exists there.
+    // step, which renders the review section.
     expect(screen.getByText('Recipient Address')).toBeInTheDocument()
-    expect(screen.queryByText('Back to Edit')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('send-review-section')).not.toBeInTheDocument()
   })
 })

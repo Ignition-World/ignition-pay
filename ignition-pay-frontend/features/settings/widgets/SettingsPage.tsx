@@ -57,7 +57,7 @@ export function SettingsPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="px-6 py-8 max-w-4xl mx-auto">
+        <div className="px-6 py-8 max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-foreground">{t('settings.title')}</h1>
@@ -72,8 +72,65 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+      {/* Main Content - Responsive Layout */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Sidebar Navigation - Collapses to horizontal tabs on tablet */}
+          <aside className="lg:w-64 flex-shrink-0">
+            <nav className="lg:sticky lg:top-8">
+              {/* Desktop: Vertical sidebar */}
+              <div className="hidden lg:block space-y-1">
+                <button className="w-full text-left px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium">
+                  Account
+                </button>
+                <button className="w-full text-left px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors">
+                  Security
+                </button>
+                <button className="w-full text-left px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors">
+                  Sessions
+                </button>
+                <button className="w-full text-left px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors">
+                  API Keys
+                </button>
+                <button className="w-full text-left px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors">
+                  Notifications
+                </button>
+                <button className="w-full text-left px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors">
+                  Privacy
+                </button>
+                <button className="w-full text-left px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors">
+                  Preferences
+                </button>
+              </div>
+              {/* Tablet/Mobile: Horizontal tabs */}
+              <div className="lg:hidden flex overflow-x-auto gap-2 pb-2 -mx-6 px-6 scrollbar-hide">
+                <button className="flex-shrink-0 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium whitespace-nowrap">
+                  Account
+                </button>
+                <button className="flex-shrink-0 px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors whitespace-nowrap">
+                  Security
+                </button>
+                <button className="flex-shrink-0 px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors whitespace-nowrap">
+                  Sessions
+                </button>
+                <button className="flex-shrink-0 px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors whitespace-nowrap">
+                  API Keys
+                </button>
+                <button className="flex-shrink-0 px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors whitespace-nowrap">
+                  Notifications
+                </button>
+                <button className="flex-shrink-0 px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors whitespace-nowrap">
+                  Privacy
+                </button>
+                <button className="flex-shrink-0 px-4 py-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors whitespace-nowrap">
+                  Preferences
+                </button>
+              </div>
+            </nav>
+          </aside>
+
+          {/* Content Area - Takes full width on mobile/tablet */}
+          <div className="flex-1 min-w-0 space-y-8">
         {/* Account Section */}
         <div className="bg-card rounded-xl border border-border p-8 space-y-6">
           <div className="flex items-center gap-3 mb-6">
@@ -123,7 +180,7 @@ export function SettingsPage() {
                   GBKXNRTZQVD6CNOQNRZVMJVQ4ZQ5K...
                 </p>
               </div>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" data-testid="settings-copy-address-button">
                 <Copy size={16} className="mr-2" />
                 Copy
               </Button>
@@ -162,7 +219,7 @@ export function SettingsPage() {
                 <p className="font-semibold text-foreground">Password</p>
                 <p className="text-sm text-muted-foreground">Last changed 2 months ago</p>
               </div>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" data-testid="settings-change-password-button">
                 Change Password
               </Button>
             </div>
@@ -220,7 +277,7 @@ export function SettingsPage() {
                     ))}
                   </div>
 
-                  <Button variant="outline" className="w-full" onClick={copySeed}>
+                  <Button variant="outline" className="w-full" onClick={copySeed} data-testid="settings-copy-seed-button">
                     <Copy className="mr-2 h-4 w-4" />
                     {copied ? 'Copied!' : 'Copy Phrase'}
                   </Button>
@@ -389,7 +446,7 @@ export function SettingsPage() {
           <h2 className="text-xl font-bold text-red-500">Danger Zone</h2>
 
           <div className="space-y-3">
-            <Button variant="outline" className="w-full justify-start">
+            <Button variant="outline" className="w-full justify-start" data-testid="settings-signout-button">
               <LogOut className="mr-2 h-4 w-4" />
               Sign Out
             </Button>
@@ -403,6 +460,8 @@ export function SettingsPage() {
             <p className="text-sm text-muted-foreground">
               Signing out will remove your session. Your account will remain secure.
             </p>
+          </div>
+        </div>
           </div>
         </div>
       </div>

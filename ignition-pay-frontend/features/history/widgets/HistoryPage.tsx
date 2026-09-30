@@ -379,7 +379,7 @@ export function HistoryPage() {
               ))}
             </select>
 
-            <Button variant="outline" size="sm" onClick={handleExport}>
+            <Button variant="outline" size="sm" onClick={handleExport} data-testid="history-export-button">
               <Download size={16} className="mr-2" />
               Export
             </Button>
@@ -480,9 +480,9 @@ export function HistoryPage() {
             <p className="text-muted-foreground">Loading transactions…</p>
           </div>
         ) : fetchError ? (
-          <div className="text-center py-12">
+          <div className="text-center py-12" data-testid="history-error-message">
             <p className="text-red-500 mb-3">{fetchError}</p>
-            <Button variant="outline" size="sm" onClick={loadFirstPage}>Retry</Button>
+            <Button variant="outline" size="sm" onClick={loadFirstPage} data-testid="history-retry-button">Retry</Button>
           </div>
         ) : visibleTransactions.length === 0 ? (
           filtersAreActive ? (
@@ -507,6 +507,7 @@ export function HistoryPage() {
               onKeyDown={onRowListKeyDown}
               aria-label="Transaction history"
               className="space-y-3"
+              data-testid="history-transaction-list"
             >
               {visibleTransactions.map((tx, index) => {
                 const key = 'optimisticId' in tx ? tx.optimisticId : tx.id

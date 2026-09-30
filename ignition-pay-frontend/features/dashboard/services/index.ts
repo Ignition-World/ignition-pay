@@ -9,6 +9,7 @@ import {
   type ErrorCodeType,
 } from '@/lib/constants'
 import type { AssetBalance, WalletSnapshot } from '@/features/dashboard/models'
+import { updateRateLimitFromHeaders } from '@/hooks/use-rate-limit'
 
 /** How often we re-poll `/wallets` when no realtime stream is available. */
 export const BALANCE_POLL_INTERVAL_MS = 15_000
@@ -98,6 +99,7 @@ export async function fetchWalletSnapshot(
       signal: composed,
       headers: { Accept: 'application/json' },
     })
+    updateRateLimitFromHeaders(response.headers)
   } catch (error) {
     if (signal?.aborted) throw error
     throw new DashboardError(ErrorCode.GEN_NETWORK_ERROR)
@@ -221,11 +223,11 @@ export async function fetchStellarDexPrices(
         : `counter_asset_type=${assetCode.length <= 4 ? 'credit_alphanum4' : 'credit_alphanum12'}&counter_asset_code=${assetCode}&counter_asset_issuer=${assetIssuer}`
 
     const url = `${horizonUrl}/trade_aggregations?${baseParam}&${counterParam}&resolution=86400000&limit=7&order=desc`
-
     const response = await fetch(url, {
       signal,
       headers: { Accept: 'application/json' },
     })
+    updateRateLimitFromHeaders(response.headers)
 
     if (response.ok) {
       const data = await response.json()
@@ -354,6 +356,7 @@ export async function fetchQuickStats(
       signal: composed,
       headers: { Accept: 'application/json' },
     })
+    updateRateLimitFromHeaders(response.headers)
 
     if (response.ok) {
       const data = await response.json()

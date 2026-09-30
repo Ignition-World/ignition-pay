@@ -4,6 +4,7 @@
  */
 
 import type { Transaction } from '../models'
+import { updateRateLimitFromHeaders } from '@/hooks/use-rate-limit'
 
 /**
  * Fetches transactions from the backend API.
@@ -59,6 +60,7 @@ export async function fetchTransactions(
     headers: { Accept: 'application/json' },
     signal,
   })
+  updateRateLimitFromHeaders(response.headers)
 
   if (!response.ok) {
     throw new Error(`Failed to fetch transactions: ${response.statusText}`)
