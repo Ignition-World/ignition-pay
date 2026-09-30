@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../core/routing/deep_link.dart';
+import '../core/routing/route_restoration_service.dart';
 import '../core/security/secure_screen_wrapper.dart';
 import '../features/auth/services/biometric_services.dart';
 import '../features/home/pages/home_page.dart';
@@ -20,7 +21,11 @@ import 'navigation_shell.dart';
 String deepLinkLocation(Uri uri) => DeepLinkResolver.locationFor(uri);
 
 final GoRouter appRouter = GoRouter(
-  initialLocation: '/',
+  // Warm launch (#698): open on the last visited route. The service is
+  // warmed up from `main()` before this router is first touched, and falls
+  // back to home when there is nothing to restore. Deep links registered
+  // after start-up call `go(...)` and therefore always win over this value.
+  initialLocation: RouteRestorationService.instance.initialLocation ?? '/',
   debugLogDiagnostics: true, // remove in production
   routes: [
     StatefulShellRoute.indexedStack(

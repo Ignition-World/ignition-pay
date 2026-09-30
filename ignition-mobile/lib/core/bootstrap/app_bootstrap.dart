@@ -10,6 +10,7 @@ import 'package:ignition_mobile/core/monitoring_service.dart';
 import 'package:ignition_mobile/core/network/api_client.dart';
 import 'package:ignition_mobile/core/network/connectivity_service.dart';
 import 'package:ignition_mobile/core/push_notification_service.dart';
+import 'package:ignition_mobile/core/routing/route_restoration_service.dart';
 import 'package:ignition_mobile/features/send/services/draft_services.dart';
 import 'package:ignition_mobile/features/send/services/draft_sync_service.dart';
 import 'package:ignition_mobile/router/app_router.dart';
@@ -42,9 +43,11 @@ class AppBootstrap {
     required Future<void> Function() registerDeepLinks,
     required Future<void> Function() initializeMonitoring,
     required Future<void> Function() flushAnalytics,
+    Future<void> Function()? restoreRoute,
     void Function(String message)? log,
     Stopwatch? stopwatch,
-  })  : _loadEnv = loadEnv,
+  })  : _restoreRoute = restoreRoute,
+        _loadEnv = loadEnv,
         _initializeApiClient = initializeApiClient,
         _initializeFirebase = initializeFirebase,
         _initializePushNotifications = initializePushNotifications,
@@ -74,9 +77,14 @@ class AppBootstrap {
       initializeMonitoring: MonitoringService.initAfterFirstFrame,
       flushAnalytics: () =>
           AnalyticsService.instance.markTimeToInteractive(),
+      restoreRoute: restoreWarmLaunchRoute,
       log: log,
     );
   }
+
+  /// Optional warm-launch restore step (#698). Null in tests that do not
+  /// care about routing.
+  final Future<void> Function()? _restoreRoute;
 
   final Future<void> Function() _loadEnv;
   final void Function() _initializeApiClient;
@@ -103,6 +111,17 @@ class AppBootstrap {
   Future<void> runCriticalPath() async {
     await _run('environment', _loadEnv);
     _runSync('apiClient', _initializeApiClient);
+  }
+
+  /// Resolves the warm-launch route (#698) before the first frame.
+  ///
+  /// A single SharedPreferences read, so it may run on the critical path. A
+  /// failure here is logged and swallowed like any other phase: the app must
+  /// still open on home.
+  Future<void> runRouteRestoration() async {
+    final restore = _restoreRoute;
+    if (restore == null) return;
+    await _run('deferred.routeRestoration', restore);
   }
 
   /// Everything that used to block the first frame and no longer does.
@@ -172,6 +191,17 @@ Future<void> startDraftSync() async {
   );
   DraftServices.syncService = draftSyncService;
   await draftSyncService.start();
+}
+
+/// Reads the persisted last route and starts recording navigations so the next
+/// warm launch reopens there (#698).
+///
+/// Deep-link registration runs later in [AppBootstrap.runDeferred] and calls
+/// `go(...)`, which replaces the restored route — deep links always win.
+Future<void> restoreWarmLaunchRoute() async {
+  final restoration = RouteRestorationService.instance;
+  await restoration.warmUp(isAuthenticated: defaultIsAuthenticated());
+  restoration.attachTo(appRouter);
 }
 
 /// Opens the app on the destination of a cold-start link and follows links that
