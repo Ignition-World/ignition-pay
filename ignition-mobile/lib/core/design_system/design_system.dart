@@ -4,6 +4,7 @@ export 'app_theme.dart';
 export 'app_button.dart';
 export 'app_card.dart';
 export 'shimmer_loader.dart';
+export 'motion.dart';
 export 'app_network_image.dart';
 export '../widgets/copyable_address.dart';
 export 'app_error_banner.dart';
