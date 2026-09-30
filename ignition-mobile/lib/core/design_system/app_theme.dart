@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'app_color_tokens.dart';
 import 'app_colors.dart';
+import 'motion.dart';
 
 /// Cross-platform typography for Ignition Mobile.
 ///
@@ -108,6 +109,11 @@ abstract final class AppTheme {
     return base.copyWith(
       textTheme: textTheme,
       primaryTextTheme: primaryTextTheme,
+      // Device-adaptive page transitions (issue #709). The builder resolves
+      // the motion policy from [MotionScope] per navigation and delegates to
+      // Flutter's stock builder when the device can afford full motion, so
+      // high-end behaviour is unchanged.
+      pageTransitionsTheme: adaptivePageTransitionsTheme(),
       // The Inter family is applied through the TextTheme above; ThemeData no
       // longer exposes a `fontFamily` argument.
       extensions: <ThemeExtension<dynamic>>[
