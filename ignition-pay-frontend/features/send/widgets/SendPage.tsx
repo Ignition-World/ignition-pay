@@ -593,6 +593,7 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
                 type="submit"
                 className="flex-1 bg-primary hover:bg-primary/90"
                 disabled={!canReview}
+                data-testid="send-review-button"
               >
                 <Send className="mr-2 h-4 w-4" />
                 Review Payment
@@ -604,7 +605,7 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
         {/* Review Step */}
         {step === 'review' && (
           <div className="space-y-6">
-            <div className="bg-card rounded-xl border border-border p-6 space-y-6">
+            <div className="bg-card rounded-xl border border-border p-6 space-y-6" data-testid="send-review-section">
               <h2 className="text-xl font-bold text-foreground">Review Payment</h2>
 
               <div className="space-y-4 bg-muted/30 rounded-lg p-4">
@@ -675,6 +676,7 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
                       ? 'bg-yellow-500/10 border-yellow-500/30'
                       : 'bg-destructive/10 border-destructive/30'
                   }`}
+                  data-testid="send-trustline-warning"
                 >
                   <AlertCircle
                     size={20}
@@ -693,7 +695,7 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
                 </div>
               )}
 
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex gap-3">
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex gap-3" data-testid="send-review-warning">
                 <AlertCircle size={20} className="text-yellow-500 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-foreground">
                   <p className="font-semibold">Please review carefully</p>
@@ -716,6 +718,7 @@ export function SendPage({ address: addressProp }: SendPageProps = {}) {
                 className="flex-1 bg-primary hover:bg-primary/90"
                 onClick={handleConfirm}
                 disabled={isCheckingTrustline || trustline?.status === 'unfunded' || isSubmitting}
+                data-testid="send-confirm-button"
               >
                 {isSubmitting ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

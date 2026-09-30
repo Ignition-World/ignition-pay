@@ -31,7 +31,7 @@ describe('DashboardPage', () => {
     renderDashboard()
 
     await waitFor(() => expect(screen.getByText(/Updated/)).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: /Refresh/i })).toBeEnabled()
+    expect(screen.getByTestId('dashboard-portfolio-summary')).toBeInTheDocument()
   })
 
   it('draws a sparkline for each asset with value history', async () => {

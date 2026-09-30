@@ -23,6 +23,7 @@ import {
   type OptimisticTransaction,
 } from '@/features/history/models'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { RateLimitIndicator } from '@/components/rate-limit-indicator'
 import { useTranslation } from '@/lib/i18n'
 import { useMinimumLoading } from '@/hooks/use-minimum-loading'
 
@@ -135,17 +136,21 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
                 {isHidden ? t('common.show') : t('common.hide')}
               </Button>
               <Link href="/receive">
-                <Button variant="outline">
+                <Button variant="outline" data-testid="dashboard-receive-button">
                   <ArrowDownLeft className="mr-2 h-4 w-4" />
                   {t('common.receive')}
                 </Button>
               </Link>
               <Link href="/send">
-                <Button className="bg-primary hover:bg-primary/90">
+                <Button className="bg-primary hover:bg-primary/90" data-testid="dashboard-send-button">
                   <Send className="mr-2 h-4 w-4" />
                   {t('common.send')}
                 </Button>
               </Link>
+            </div>
+            <div className="flex items-center gap-3">
+              <RateLimitIndicator />
+              <ThemeToggle />
             </div>
           </div>
         </div>
@@ -162,6 +167,7 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
               title="Could not load your balances"
               message={error ?? 'Please try again in a moment.'}
               onRetry={handleRefresh}
+              data-testid="dashboard-balances-error"
             />
           )}
 
@@ -185,6 +191,7 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
                 hideAmounts={isHidden}
                 onToggleHideAmounts={toggle}
                 onRefresh={handleRefresh}
+                data-testid="dashboard-portfolio-summary"
               />
             </>
           )}
@@ -219,6 +226,7 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
                 title="Assets unavailable"
                 message={error ?? 'We could not reach the wallet service.'}
                 onRetry={handleRefresh}
+                data-testid="dashboard-assets-error"
               />
             )}
 
@@ -293,7 +301,7 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
                 description={t('dashboard.noTxDesc')}
               />
             ) : (
-              <div className="bg-card rounded-xl border border-border divide-y divide-border overflow-hidden">
+              <div className="bg-card rounded-xl border border-border divide-y divide-border overflow-hidden" data-testid="dashboard-recent-transactions">
                 {recentTransactions.map((tx) => {
                   const key = 'optimisticId' in tx ? tx.optimisticId : tx.id
                   return <TransactionRow key={key} transaction={tx} />
