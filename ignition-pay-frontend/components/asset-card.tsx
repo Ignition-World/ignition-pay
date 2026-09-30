@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { MASKED_AMOUNT } from '@/hooks/use-hide-balances'
 
@@ -13,7 +14,7 @@ interface AssetCardProps {
   hideAmounts?: boolean
 }
 
-export function AssetCard({
+function AssetCardImpl({
   code,
   issuer,
   balance,
@@ -67,3 +68,13 @@ export function AssetCard({
     </div>
   )
 }
+
+/**
+ * #672 — the dashboard re-renders on every balance poll, which used to remount
+ * every card and produce a visible flicker. `React.memo` skips a render when
+ * the card's props are unchanged; every prop here is a primitive so the
+ * default shallow comparison is enough and the public API is untouched.
+ */
+export const AssetCard = memo(AssetCardImpl)
+
+AssetCard.displayName = 'AssetCard'

@@ -354,6 +354,7 @@ export function HistoryPage() {
                 />
                 <input
                   type="text"
+                  data-shortcut="search"
                   placeholder="Search by address, asset, or tx hash…"
                   aria-label="Search transactions"
                   className="w-full pl-10 pr-4 py-2 rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
@@ -484,7 +485,7 @@ export function HistoryPage() {
             <Button variant="outline" size="sm" onClick={loadFirstPage}>Retry</Button>
           </div>
         ) : visibleTransactions.length === 0 ? (
-          hasActiveFilters ? (
+          filtersAreActive ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground mb-2">No transactions found</p>
               <p className="text-sm text-muted-foreground">

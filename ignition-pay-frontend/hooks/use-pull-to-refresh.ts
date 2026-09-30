@@ -88,7 +88,10 @@ export function usePullToRefresh({
     }
 
     setIsRefreshing(true)
-    setPullDistance(threshold)
+    // Collapse the pull indicator. The spinner is driven by `isRefreshing`, and
+    // holding the distance at the threshold reported `isReady` — "release to
+    // refresh" — for the whole duration of a refresh that is already running.
+    setPullDistance(0)
     try {
       await onRefresh()
     } finally {

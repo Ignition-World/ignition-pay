@@ -13,7 +13,13 @@ import { TransactionRow, TransactionRowSkeleton } from '@/components/transaction
 import { PullToRefresh } from '@/components/pull-to-refresh'
 import { MASKED_AMOUNT, useHideBalances } from '@/hooks/use-hide-balances'
 import { InlineEmpty, InlineError, InlineSkeleton } from '@/components/inline-state'
-import { groupAssets, portfolioChange24h, totalValue } from '@/features/dashboard/models'
+import {
+  DASHBOARD_ASSET_LAYOUT_EXPERIMENT,
+  groupAssets,
+  portfolioChange24h,
+  totalValue,
+} from '@/features/dashboard/models'
+import { useExperiment } from '@/hooks/use-ab-experiment'
 import { useWalletBalances, useQuickStats } from '@/features/dashboard/state'
 import { fetchTransactions } from '@/features/history/services'
 import { useOptimisticTransactions } from '@/features/history/state'
@@ -32,6 +38,13 @@ interface DashboardPageProps {
 
 export function DashboardPage({ address }: DashboardPageProps = {}) {
   const { t } = useTranslation()
+  // #670 — A/B experiment for the asset grid. Assignment is deterministic and
+  // persisted; the resolved variant is exposed on the section below so a variant
+  // can branch on it without changing the control experience.
+  const {
+    variantId: assetLayoutVariant,
+    complete: completeAssetLayoutExperiment,
+  } = useExperiment(DASHBOARD_ASSET_LAYOUT_EXPERIMENT)
   const { isHidden, toggle } = useHideBalances()
   const { snapshot, status, error, isRefreshing, isLive, refresh } =
     useWalletBalances(address)
@@ -110,6 +123,46 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
   const portfolioValue = useMemo(() => totalValue(assets), [assets])
   const dailyChange = useMemo(() => portfolioChange24h(assets), [assets])
   const isPositive = dailyChange >= 0
+
+  // #672 — keep the element identities stable across unrelated state changes
+  // (a transaction refresh, the hide-amounts toggle) so React can skip the
+  // whole asset grid instead of re-rendering every memoized card. Props to the
+  // cards stay referentially stable because `groups` only changes with the
+  // wallet snapshot.
+  const assetGroups = useMemo(
+    () => (
+      <div className="space-y-8">
+        {groups.map((group) => (
+          <section key={group.category} aria-labelledby={`asset-group-${group.category}`}>
+            <div className="flex items-baseline justify-between mb-3">
+              <div>
+                <h3
+                  id={`asset-group-${group.category}`}
+                  className="text-sm font-semibold uppercase tracking-wide text-foreground"
+                >
+                  {group.label}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">{group.description}</p>
+              </div>
+              <p className="text-sm font-semibold text-primary">
+                {isHidden ? MASKED_AMOUNT : `$${group.totalValue.toFixed(2)}`}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {group.assets.map((asset) => (
+                <WalletCard
+                  key={`${asset.code}-${asset.issuer}`}
+                  asset={asset}
+                  hideAmounts={isHidden}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    ),
+    [groups, isHidden],
+  )
 
   return (
     <div className="min-h-screen bg-background">
@@ -190,7 +243,10 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
           )}
 
           {/* Assets, grouped by asset kind */}
-          <div>
+          <div
+            data-ab-experiment={DASHBOARD_ASSET_LAYOUT_EXPERIMENT.id}
+            data-ab-variant={assetLayoutVariant}
+          >
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-foreground">{t('dashboard.assets')}</h2>
@@ -237,37 +293,7 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
               />
             )}
 
-            {!showBalancesSkeleton && groups.length > 0 && (
-              <div className="space-y-8">
-                {groups.map((group) => (
-                  <section key={group.category} aria-labelledby={`asset-group-${group.category}`}>
-                    <div className="flex items-baseline justify-between mb-3">
-                      <div>
-                        <h3
-                          id={`asset-group-${group.category}`}
-                          className="text-sm font-semibold uppercase tracking-wide text-foreground"
-                        >
-                          {group.label}
-                        </h3>
-                        <p className="text-xs text-muted-foreground mt-1">{group.description}</p>
-                      </div>
-                      <p className="text-sm font-semibold text-primary">
-                        {isHidden ? MASKED_AMOUNT : `$${group.totalValue.toFixed(2)}`}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {group.assets.map((asset) => (
-                        <WalletCard
-                          key={`${asset.code}-${asset.issuer}`}
-                          asset={asset}
-                          hideAmounts={isHidden}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            )}
+            {!showBalancesSkeleton && groups.length > 0 && assetGroups}
           </div>
 
           {/* Recent Transactions */}
@@ -279,7 +305,7 @@ export function DashboardPage({ address }: DashboardPageProps = {}) {
                   {t('dashboard.recentTxSubtitle')}
                 </p>
               </div>
-              <Link href="/history">
+              <Link href="/history" onClick={completeAssetLayoutExperiment}>
                 <Button variant="ghost">{t('dashboard.viewAll')}</Button>
               </Link>
             </div>

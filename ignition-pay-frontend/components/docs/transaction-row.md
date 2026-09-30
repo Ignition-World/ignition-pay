@@ -15,6 +15,7 @@ import { TransactionRow } from '@/components/transaction-row'
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `transaction` | `Transaction \| OptimisticTransaction` | Yes | — | Transaction to render. Optimistic transactions show a pending badge. |
+| `tabIndex` | `number` | No | — |  |
 
 ## Usage
 
