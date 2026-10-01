@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../features/auth/services/biometric_services.dart';
 import '../../features/settings/pages/security_settings_page.dart';
+import '../../features/wallet_connect/pages/wallet_connect_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -12,6 +14,14 @@ class SettingsPage extends StatelessWidget {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          ListTile(
+            leading: const Icon(Icons.link),
+            title: const Text('WalletConnect'),
+            subtitle: const Text('Connect DApps and manage sessions'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.go('/settings/wallet-connect'),
+          ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.security),
             title: const Text('Security'),
