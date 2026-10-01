@@ -13,6 +13,7 @@ import '../features/settings/pages/security_settings_page.dart';
 import '../features/receive/receive_page.dart';
 import '../features/history/history_page.dart';
 import '../features/settings/settings_page.dart';
+import '../features/wallet_connect/pages/wallet_connect_page.dart';
 import 'navigation_shell.dart';
 
 /// Maps an inbound `ignitionpay://` / universal-link URI onto an in-app
@@ -136,6 +137,13 @@ final GoRouter appRouter = GoRouter(
               name: 'securitySettings',
               builder: (context, state) => SecuritySettingsPage(
                 biometricService: BiometricServices.service,
+              ),
+            ),
+            GoRoute(
+              path: '/settings/wallet-connect',
+              name: 'walletConnect',
+              builder: (context, state) => const SecureScreenWrapper(
+                child: WalletConnectPage(),
               ),
             ),
           ],
