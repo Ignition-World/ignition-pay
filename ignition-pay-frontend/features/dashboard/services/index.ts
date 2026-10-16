@@ -185,23 +185,53 @@ export function subscribeToWalletStream(
   address: string,
   handlers: WalletStreamHandlers,
 ): (() => void) | null {
-  const streamUrl = process.env.NEXT_PUBLIC_WALLET_STREAM_URL
-  if (!streamUrl || typeof EventSource === 'undefined') return null
+  if (typeof EventSource === 'undefined') return null
 
-  const source = new EventSource(`${streamUrl}?address=${encodeURIComponent(address)}`)
+  const backendUrl = process.env.NEXT_PUBLIC_WALLET_STREAM_URL
+  const horizonUrl = process.env.NEXT_PUBLIC_HORIZON_URL
+
+  // Prefer the backend notification stream. Without one, fall back to
+  // Horizon's own payments stream for the account (server-sent events), so an
+  // incoming payment still refreshes balances immediately instead of waiting
+  // for the next poll.
+  let streamUrl: string | null = null
+  if (backendUrl) {
+    streamUrl = `${backendUrl}?address=${encodeURIComponent(address)}`
+  } else if (horizonUrl && /^G[A-Z2-7]{55}$/.test(address)) {
+    streamUrl = `${horizonUrl.replace(/\/$/, '')}/accounts/${address}/payments?cursor=now`
+  }
+  if (!streamUrl) return null
+
+  const source = new EventSource(streamUrl)
 
   const handleMessage = () => handlers.onBalanceChange()
   const handleError = () => handlers.onError?.()
 
   source.addEventListener('balance', handleMessage)
   source.addEventListener('payment', handleMessage)
+  // Horizon sends unnamed `message` events for each new payment operation.
+  source.addEventListener('message', handleMessage)
   source.addEventListener('error', handleError)
 
   return () => {
     source.removeEventListener('balance', handleMessage)
     source.removeEventListener('payment', handleMessage)
+    source.removeEventListener('message', handleMessage)
     source.removeEventListener('error', handleError)
     source.close()
+  }
+}
+
+/** Window event that asks every mounted `useWalletBalances` to reload now. */
+export const WALLET_BALANCES_INVALIDATED_EVENT = 'walletBalancesInvalidated'
+
+/**
+ * Invalidate cached dashboard balances. Call after any flow that is known to
+ * change the balance (e.g. a completed receive via QR scan or deep link).
+ */
+export function invalidateWalletBalances(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(WALLET_BALANCES_INVALIDATED_EVENT))
   }
 }
 

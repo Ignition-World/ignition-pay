@@ -12,6 +12,7 @@ import {
   type QuickStatsData,
   isLiveDataConfigured,
   subscribeToWalletStream,
+  WALLET_BALANCES_INVALIDATED_EVENT,
   resolveWalletAddress,
 } from '@/features/dashboard/services'
 import { ErrorMessage, ErrorCode } from '@/lib/constants'
@@ -124,6 +125,13 @@ export function useWalletBalances(addressProp?: string): WalletBalancesState {
       requestRef.current?.abort()
     }
   }, [address, load])
+
+  // Explicit invalidation (e.g. after a completed receive) reloads immediately.
+  useEffect(() => {
+    const handleInvalidated = () => void load()
+    window.addEventListener(WALLET_BALANCES_INVALIDATED_EVENT, handleInvalidated)
+    return () => window.removeEventListener(WALLET_BALANCES_INVALIDATED_EVENT, handleInvalidated)
+  }, [load])
 
   // A wallet network switch makes the current balances stale, so drop them and
   // reload rather than showing the previous network until the next poll.
