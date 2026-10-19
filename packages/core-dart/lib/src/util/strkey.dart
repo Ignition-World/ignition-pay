@@ -36,6 +36,28 @@ class StrKeyUtil {
     return result;
   }
 
+  /// Decodes [input] like [decodeBase32], but also verifies the trailing
+  /// CRC-16 checksum and strips it from the returned payload. Throws a
+  /// [FormatException] on mismatch so malformed addresses fail loudly
+  /// instead of silently returning bytes with a bad checksum.
+  static Uint8List decodeBase32Checked(String input) {
+    final decoded = decodeBase32(input);
+    if (decoded.length < 3) {
+      throw FormatException('Decoded StrKey too short to contain a checksum');
+    }
+
+    final payload = decoded.sublist(0, decoded.length - 2);
+    final checksum = decoded.sublist(decoded.length - 2);
+    final calculated = calculateChecksum(Uint8List.fromList(payload));
+
+    if (checksum[0] != (calculated & 0xFF) ||
+        checksum[1] != ((calculated >> 8) & 0xFF)) {
+      throw FormatException('Invalid StrKey checksum');
+    }
+
+    return payload;
+  }
+
   static String encodeBase32(Uint8List data) {
     final result = StringBuffer();
 

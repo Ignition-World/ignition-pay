@@ -3,20 +3,65 @@ title: "Flutter: Deposit Addresses"
 description: "Displaying G and M addresses in your UI."
 ---
 
-When displaying a deposit address to a user in Flutter, you should prioritize M-addresses for a better user experience.
+When building a Stellar wallet in Flutter, you should make deposit addresses easy to understand and copy. For pooled-account flows, prefer M-addresses when possible, but still provide a clear fallback for exchanges and legacy integrations.
 
-## UI Example
+## Choosing the right format
+
+You generally have two UX options:
+
+- M-address: a single string that carries the base G-address and the routing ID.
+- Base address + memo: useful for exchanges, manual transfers, and older integrations.
+
+## Displaying a deposit address
+
+```dart
+import 'package:stellar_address_kit/stellar_address_kit.dart';
+
+final String baseAddress = 'GA7QYNF7SOWQ3GLR2B6RS22TBGZAOR6KLYH4PA5ZAM73A3H4K2HZZSQU';
+final int userId = 123456789;
+
+final String muxedAddress = AddressEncoder.encodeMuxedAddress(baseAddress, userId);
+
+print('Deposit address: $muxedAddress');
+```
+
+In your UI, render the address in a readable format and give users a copy button for both the address and the routing ID. If you use an M-address, the user usually only needs to copy one string.
+
+## Showing the address and memo separately
+
+If your app needs to present the components independently, you can still derive them from the same routing input:
 
 ```dart
 final routing = extractRouting(RoutingInput(
-  address: "G...",
-  memoId: "123",
+  address: 'G...',
+  memoId: '123',
 ));
 
-// Display the "Friendly" address if available
-Text(routing.address); // The G-address
-Text(routing.routingId); // The Memo ID
+// Display the base address if available
+Text(routing.address);
+
+// Display the routing ID or memo value
+Text(routing.routingId);
 ```
 
-## Copy to Clipboard
-Always provide a copy button for both the address and the memo. If you are using an M-address, the user only needs to copy one string.
+## Validating withdrawals
+
+When a user pastes a destination address, validate it before you send funds:
+
+```dart
+String userInput = 'MA7QYNF7SOWQ3GLR2B6RS22TBGZAOR6KLYH4PA5ZAM73A3H4K2HZZSQU...';
+
+if (AddressValidator.isValid(userInput)) {
+  if (AddressValidator.isMuxed(userInput)) {
+    final decoded = AddressDecoder.decodeMuxedAddress(userInput);
+    print('Sending to base: ${decoded.baseAddress}');
+    print('With routing ID: ${decoded.id}');
+  }
+}
+```
+
+## Best practices
+
+- Prefer M-addresses for wallet-to-wallet flows.
+- Always expose a copy action for the routing ID.
+- Validate destination strings before processing withdrawals.

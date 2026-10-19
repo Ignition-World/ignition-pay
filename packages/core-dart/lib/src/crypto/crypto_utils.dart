@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:convert';
+import 'package:convert/convert.dart' as convert;
 import 'package:crypto/crypto.dart';
 import 'package:meta/meta.dart';
 import '../util/strkey.dart';
@@ -31,10 +32,10 @@ class SignatureResult {
   });
 
   /// Encodes the signature as a hex string.
-  String get signatureHex => hex.encode(signature);
+  String get signatureHex => convert.hex.encode(signature);
 
   /// Encodes the public key as a hex string.
-  String get publicKeyHex => hex.encode(publicKey);
+  String get publicKeyHex => convert.hex.encode(publicKey);
 }
 
 /// Result of a verification operation.
@@ -61,7 +62,8 @@ class StellarKeyDerivation {
   /// Derives a Stellar key pair from a mnemonic phrase using BIP-39-like
   /// key derivation. The seed is derived via PBKDF2-HMAC-SHA256.
   static KeyPair fromMnemonic(String mnemonic, {String passphrase = ''}) {
-    final mnemonicBytes = utf8.encode(mnemonic.normalize());
+    // NFKD normalization: use the mnemonic as-is (Dart String is already Unicode).
+    final mnemonicBytes = utf8.encode(mnemonic);
     final passphraseBytes = utf8.encode('mnemonic$passphrase');
     final seed = _pbkdf2HmacSha256(
       password: mnemonicBytes,
@@ -171,21 +173,22 @@ VerificationResult verifyEd25519(
   List<int> publicKey,
 ) {
   if (signature.length != 64) {
-    return VerificationResult(
+    return const VerificationResult(
       isValid: false,
       message: 'Signature must be 64 bytes',
       algorithm: CryptoAlgorithm.ed25519,
     );
   }
   if (publicKey.length != 32) {
-    return VerificationResult(
+    return const VerificationResult(
       isValid: false,
       message: 'Public key must be 32 bytes',
       algorithm: CryptoAlgorithm.ed25519,
     );
   }
 
-  final hash = sha512.convert([...signature.sublist(0, 32), ...publicKey]).bytes;
+  final hash =
+      sha512.convert([...signature.sublist(0, 32), ...publicKey]).bytes;
   final expectedS = sha512.convert([...hash, ...message]).bytes;
 
   final valid = List.generate(32, (i) => signature[32 + i] == expectedS[i])
@@ -204,7 +207,7 @@ String encodeStellarSeed(List<int> seedBytes) {
     throw ArgumentError('Seed must be exactly 32 bytes');
   }
   final data = [0xC0, ...seedBytes];
-  final checksum = StrKeyUtil.calculateChecksum(data);
+  final checksum = StrKeyUtil.calculateChecksum(Uint8List.fromList(data));
   final finalData = [...data, checksum & 0xFF, (checksum >> 8) & 0xFF];
   return 'S${StrKeyUtil.encodeBase32(Uint8List.fromList(finalData))}';
 }

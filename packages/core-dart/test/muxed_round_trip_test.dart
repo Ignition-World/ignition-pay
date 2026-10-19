@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:test/test.dart';
 import 'package:stellar_address_kit/stellar_address_kit.dart';
@@ -12,6 +14,18 @@ BigInt _randomUint64(Random rng) {
   final hi = BigInt.from(rng.nextInt(1 << 32));
   final lo = BigInt.from(rng.nextInt(1 << 32));
   return (hi << 32) + lo;
+}
+
+/// Returns a copy of a valid M-address with the last character changed,
+/// which corrupts the CRC-16 checksum. Used to verify that tampered
+/// addresses are rejected during decode.
+String _tamperChecksum(String mAddress) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  final last = mAddress[mAddress.length - 1];
+  final idx = alphabet.indexOf(last);
+  assert(idx != -1, 'Last character of M-address must be a valid base32 char');
+  final next = alphabet[(idx + 1) % alphabet.length];
+  return mAddress.substring(0, mAddress.length - 1) + next;
 }
 
 void main() {
@@ -117,6 +131,38 @@ void main() {
             reason: 're-encode mismatch id=$id');
       }
     });
+
+    // ── Expanded uint64 edge case IDs (matching Go roundtrip_test.go) ───────
+    group('uint64 edge cases (cross-language parity)', () {
+      final edgeCases = <String, BigInt>{
+        'min (0)': BigInt.zero,
+        'one (1)': BigInt.one,
+        'max_uint32_half (2^31-1)': BigInt.from(2147483647),
+        'max_uint32 (2^32-1)': BigInt.from(4294967295),
+        'max_uint32_plus_one (2^32)': BigInt.from(4294967296),
+        'max_int64 (2^63-1)': BigInt.parse('9223372036854775807'),
+        'max_int64_plus_one (2^63)': BigInt.parse('9223372036854775808'),
+        'max_uint64_minus_one': BigInt.parse('18446744073709551614'),
+        'max_uint64': BigInt.parse('18446744073709551615'),
+        'JS safe-int boundary (2^53-1)': BigInt.parse('9007199254740991'),
+        'JS safe-int canary (2^53+1)': BigInt.parse('9007199254740993'),
+      };
+
+      for (final entry in edgeCases.entries) {
+        test('round-trip $entry', () {
+          final id = entry.value;
+          final mAddress = MuxedAddress.encode(baseG: _baseG, id: id);
+          final decoded = MuxedAddress.decode(mAddress);
+          expect(decoded.baseG, equals(_baseG),
+              reason: 'baseG mismatch for $entry');
+          expect(decoded.id, equals(id), reason: 'id mismatch for $entry');
+          final reEncoded =
+              MuxedAddress.encode(baseG: decoded.baseG, id: decoded.id);
+          expect(reEncoded, equals(mAddress),
+              reason: 're-encode mismatch for $entry');
+        });
+      }
+    });
   });
 
   // Feature: muxed-decode-typed-dto, Property 5: Invalid input throws StellarAddressException
@@ -155,5 +201,153 @@ void main() {
         );
       }
     });
+
+    // ── Checksum validation ─────────────────────────────────────────────────
+    group('CRC-16 checksum validation', () {
+      test('tampered checksum throws StellarAddressException for id=0', () {
+        final mAddress =
+            MuxedAddress.encode(baseG: _baseG, id: BigInt.zero);
+        final tampered = _tamperChecksum(mAddress);
+        expect(tampered, isNot(equals(mAddress)),
+            reason: 'tampered address should differ from original');
+
+        expect(
+          () => MuxedAddress.decode(tampered),
+          throwsA(isA<StellarAddressException>()),
+          reason: 'decode of tampered M address must throw',
+        );
+      });
+
+      test('tampered checksum throws across $_iterations random ids', () {
+        for (var i = 0; i < _iterations; i++) {
+          final id = _randomUint64(rng);
+          final mAddress =
+              MuxedAddress.encode(baseG: _baseG, id: id);
+          final tampered = _tamperChecksum(mAddress);
+
+          expect(
+            () => MuxedAddress.decode(tampered),
+            throwsA(isA<StellarAddressException>()),
+            reason: 'tampered checksum not rejected at iteration $i (id=$id)',
+          );
+        }
+      });
+
+      test('tampered checksum throws for all edge case ids', () {
+        final edgeIds = [
+          BigInt.zero,
+          BigInt.one,
+          BigInt.parse('18446744073709551615'), // max uint64
+          BigInt.parse('9007199254740993'), // 2^53+1 canary
+        ];
+        for (final id in edgeIds) {
+          final mAddress =
+              MuxedAddress.encode(baseG: _baseG, id: id);
+          final tampered = _tamperChecksum(mAddress);
+
+          expect(
+            () => MuxedAddress.decode(tampered),
+            throwsA(isA<StellarAddressException>()),
+            reason: 'tampered checksum not rejected for id=$id',
+          );
+        }
+      });
+    });
+  });
+
+  // ── Spec vector cross-validation ──────────────────────────────────────────
+  group('Spec vector cross-validation', () {
+    final file = File('../../spec/vectors.json');
+
+    if (file.existsSync()) {
+      final Map<String, dynamic> json =
+          jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      final List<dynamic> cases = json['cases'] as List<dynamic>;
+
+      // Collect all muxed_encode cases and verify round-trip
+      final muxedEncodeCases = cases
+          .where((c) =>
+              (c as Map<String, dynamic>)['module'] == 'muxed_encode')
+          .map((c) => c as Map<String, dynamic>)
+          .toList();
+
+      for (final caseData in muxedEncodeCases) {
+        final input = caseData['input'] as Map<String, dynamic>;
+        final expected = caseData['expected'] as Map<String, dynamic>;
+        final baseG = input['base_g'].toString();
+        final id = BigInt.parse(input['id'].toString());
+        final expectedMAddress = expected['mAddress'].toString();
+
+        test(
+            'encode(${caseData['description']}) matches expected M-address', () {
+          final result = MuxedAddress.encode(baseG: baseG, id: id);
+          expect(result, equals(expectedMAddress));
+        });
+
+        test(
+            'round-trip ${caseData['description']} (spec vector)', () {
+          final decoded = MuxedAddress.decode(expectedMAddress);
+          expect(decoded.baseG, equals(baseG),
+              reason: 'baseG mismatch for spec vector id=$id');
+          expect(decoded.id, equals(id),
+              reason: 'id mismatch for spec vector id=$id');
+          final reEncoded =
+              MuxedAddress.encode(baseG: decoded.baseG, id: decoded.id);
+          expect(reEncoded, equals(expectedMAddress),
+              reason: 're-encode mismatch for spec vector id=$id');
+        });
+      }
+
+      // Collect all muxed_decode cases and verify decode
+      final muxedDecodeCases = cases
+          .where((c) =>
+              (c as Map<String, dynamic>)['module'] == 'muxed_decode')
+          .map((c) => c as Map<String, dynamic>)
+          .toList();
+
+      for (final caseData in muxedDecodeCases) {
+        final input = caseData['input'] as Map<String, dynamic>;
+        final expected = caseData['expected'] as Map<String, dynamic>;
+        final mAddress = input['mAddress'].toString();
+
+        if (expected.containsKey('expected_error')) {
+          test(
+              'decode ${caseData['description']} throws', () {
+            expect(
+              () => MuxedAddress.decode(mAddress),
+              throwsA(isA<StellarAddressException>()),
+            );
+          });
+        } else {
+          final expectedBaseG =
+              (expected['baseG'] ?? expected['base_g']).toString();
+          final expectedId = BigInt.parse(expected['id'].toString());
+
+          test(
+              'decode ${caseData['description']} matches expected', () {
+            final decoded = MuxedAddress.decode(mAddress);
+            expect(decoded.baseG, equals(expectedBaseG));
+            expect(decoded.id, equals(expectedId));
+          });
+
+          test(
+              'round-trip ${caseData['description']} (decode → encode)', () {
+            final decoded = MuxedAddress.decode(mAddress);
+            expect(decoded.baseG, equals(expectedBaseG));
+            expect(decoded.id, equals(expectedId));
+            final reEncoded =
+                MuxedAddress.encode(baseG: decoded.baseG, id: decoded.id);
+            // Re-encoding should produce the identical M-address
+            expect(reEncoded, equals(mAddress),
+                reason: 're-encode mismatch for spec vector');
+          });
+        }
+      }
+    } else {
+      test('spec/vectors.json found', () {
+        // File not found — skip spec vector tests gracefully.
+        // Fail only if running in an environment where vectors.json is expected.
+      }, skip: 'spec/vectors.json not found at ../../spec/vectors.json');
+    }
   });
 }

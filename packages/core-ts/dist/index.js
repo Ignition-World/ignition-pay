@@ -31,16 +31,26 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   AddressParseError: () => AddressParseError,
+  DEFAULT_ROUTING_FLAGS: () => DEFAULT_ROUTING_FLAGS,
   ExtractRoutingError: () => ExtractRoutingError,
   decodeMuxed: () => decodeMuxed,
   detect: () => detect,
   encodeMuxed: () => encodeMuxed,
   extractRouting: () => extractRouting,
   extractRoutingFromTx: () => extractRoutingFromTx,
+  generateMemo: () => generateMemo,
+  generateMemoHash: () => generateMemoHash,
+  generateMemoId: () => generateMemoId,
+  generateMemoText: () => generateMemoText,
   normalizeMemoTextId: () => normalizeMemoTextId,
   parse: () => parse,
+  resolveFlags: () => resolveFlags,
   routingIdAsBigInt: () => routingIdAsBigInt,
-  validate: () => validate
+  validate: () => validate,
+  validateMemo: () => validateMemo,
+  validateMemoHash: () => validateMemoHash,
+  validateMemoId: () => validateMemoId,
+  validateMemoText: () => validateMemoText
 });
 module.exports = __toCommonJS(index_exports);
 
@@ -204,6 +214,12 @@ function encodeMuxed(baseG, id) {
 
 // src/routing/memo.ts
 var UINT64_MAX = BigInt("18446744073709551615");
+function getUtf8ByteLength(str) {
+  if (typeof TextEncoder !== "undefined") {
+    return new TextEncoder().encode(str).length;
+  }
+  return Buffer.byteLength(str, "utf8");
+}
 function normalizeMemoTextId(s) {
   const warnings = [];
   if (s.length === 0 || !/^\d+$/.test(s)) {
@@ -231,6 +247,181 @@ function normalizeMemoTextId(s) {
   }
   return { normalized, warnings };
 }
+function validateMemoText(text) {
+  if (typeof text !== "string") return false;
+  const len = getUtf8ByteLength(text);
+  return len > 0 && len <= 28;
+}
+function validateMemoHash(hash) {
+  if (typeof hash !== "string") return false;
+  return /^[0-9a-fA-F]{64}$/.test(hash);
+}
+function validateMemoId(id) {
+  if (typeof id === "bigint") {
+    return id >= BigInt(0) && id <= UINT64_MAX;
+  }
+  if (typeof id !== "string") return false;
+  const norm = normalizeMemoTextId(id);
+  return norm.normalized !== null;
+}
+function validateMemo(type, value) {
+  const warnings = [];
+  if (type === "none") {
+    return {
+      valid: value === null || value === void 0 || value === "",
+      type: "none",
+      normalizedValue: null,
+      warnings,
+      error: value ? "Memo value provided for memo type 'none'" : void 0
+    };
+  }
+  if (!value) {
+    return {
+      valid: false,
+      type,
+      normalizedValue: null,
+      warnings,
+      error: `Memo value is required for memo type '${type}'`
+    };
+  }
+  switch (type) {
+    case "id": {
+      const norm = normalizeMemoTextId(value);
+      warnings.push(...norm.warnings);
+      if (norm.normalized === null) {
+        return {
+          valid: false,
+          type: "id",
+          normalizedValue: null,
+          warnings,
+          error: "MEMO_ID must be a numeric integer between 0 and 18446744073709551615"
+        };
+      }
+      return {
+        valid: true,
+        type: "id",
+        normalizedValue: norm.normalized,
+        warnings
+      };
+    }
+    case "text": {
+      if (!validateMemoText(value)) {
+        return {
+          valid: false,
+          type: "text",
+          normalizedValue: null,
+          warnings,
+          error: "MEMO_TEXT must not be empty and must be at most 28 UTF-8 bytes"
+        };
+      }
+      return {
+        valid: true,
+        type: "text",
+        normalizedValue: value,
+        warnings
+      };
+    }
+    case "hash":
+    case "return": {
+      if (!validateMemoHash(value)) {
+        return {
+          valid: false,
+          type,
+          normalizedValue: null,
+          warnings,
+          error: `MEMO_${type.toUpperCase()} must be a 64-character hex string (32 bytes)`
+        };
+      }
+      return {
+        valid: true,
+        type,
+        normalizedValue: value.toLowerCase(),
+        warnings
+      };
+    }
+    default:
+      return {
+        valid: false,
+        type,
+        normalizedValue: null,
+        warnings,
+        error: `Unrecognized memo type: '${type}'`
+      };
+  }
+}
+function generateMemoText(text) {
+  if (!text || typeof text !== "string") {
+    throw new Error("Input text must be a non-empty string");
+  }
+  let result = text;
+  while (getUtf8ByteLength(result) > 28) {
+    result = result.slice(0, -1);
+  }
+  if (!result) {
+    throw new Error("Failed to generate valid MEMO_TEXT");
+  }
+  return result;
+}
+function generateMemoHash(input) {
+  if (input instanceof Uint8Array) {
+    if (input.length !== 32) {
+      throw new Error("Uint8Array input for MEMO_HASH must be exactly 32 bytes");
+    }
+    return Array.from(input).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+      return trimmed.toLowerCase();
+    }
+    if (/^[0-9a-fA-F]+$/.test(trimmed) && trimmed.length <= 64) {
+      return trimmed.padStart(64, "0").toLowerCase();
+    }
+  }
+  throw new Error("Invalid input for MEMO_HASH: expected 64-char hex string or 32-byte Uint8Array");
+}
+function generateMemoId(id) {
+  if (typeof id === "bigint") {
+    if (id < BigInt(0) || id > UINT64_MAX) {
+      throw new Error("MEMO_ID bigint out of uint64 bounds");
+    }
+    return id.toString();
+  }
+  const norm = normalizeMemoTextId(id);
+  if (!norm.normalized) {
+    throw new Error("Invalid MEMO_ID: must be a valid uint64 numeric string");
+  }
+  return norm.normalized;
+}
+function generateMemo(type, value) {
+  switch (type) {
+    case "text":
+      if (typeof value !== "string") {
+        throw new Error("MEMO_TEXT requires a string value");
+      }
+      return { type: "text", value: generateMemoText(value) };
+    case "hash":
+      if (typeof value !== "string" && !(value instanceof Uint8Array)) {
+        throw new Error("MEMO_HASH requires a hex string or Uint8Array value");
+      }
+      return { type: "hash", value: generateMemoHash(value) };
+    case "id":
+      if (typeof value !== "string" && typeof value !== "bigint") {
+        throw new Error("MEMO_ID requires a string or bigint value");
+      }
+      return { type: "id", value: generateMemoId(value) };
+    default:
+      throw new Error(`Unsupported memo generation type: '${type}'`);
+  }
+}
+
+// src/routing/flags.ts
+var DEFAULT_ROUTING_FLAGS = {
+  experimentalRouting: false
+};
+function resolveFlags(flags) {
+  return { ...DEFAULT_ROUTING_FLAGS, ...flags };
+}
 
 // src/routing/extract.ts
 var ExtractRoutingError = class _ExtractRoutingError extends Error {
@@ -253,8 +444,10 @@ function assertRoutableAddress(destination) {
     );
   }
 }
-function extractRouting(input) {
-  assertRoutableAddress(input.destination);
+function extractRoutingExperimental(input) {
+  return extractRoutingStable(input);
+}
+function extractRoutingStable(input) {
   let parsed;
   try {
     parsed = parse(input.destination);
@@ -346,19 +539,27 @@ function extractRouting(input) {
       routingId = norm.normalized;
       routingSource = "memo";
       warnings.push(...norm.warnings);
+    } else if (validateMemoText(input.memoValue)) {
+      routingId = input.memoValue;
+      routingSource = "memo";
     } else {
       warnings.push({
         code: "MEMO_TEXT_UNROUTABLE",
         severity: "warn",
-        message: "MEMO_TEXT was not a valid numeric uint64."
+        message: "MEMO_TEXT was not valid for routing (must be <= 28 UTF-8 bytes)."
       });
     }
-  } else if (input.memoType === "hash" || input.memoType === "return") {
-    warnings.push({
-      code: "MEMO_TEXT_UNROUTABLE",
-      severity: "warn",
-      message: `Memo type ${input.memoType} is not supported for routing.`
-    });
+  } else if ((input.memoType === "hash" || input.memoType === "return") && input.memoValue) {
+    if (validateMemoHash(input.memoValue)) {
+      routingId = input.memoValue.toLowerCase();
+      routingSource = "memo";
+    } else {
+      warnings.push({
+        code: "MEMO_TEXT_UNROUTABLE",
+        severity: "warn",
+        message: `MEMO_${input.memoType.toUpperCase()} was not a valid 32-byte hex hash.`
+      });
+    }
   } else if (input.memoType !== "none") {
     warnings.push({
       code: "MEMO_TEXT_UNROUTABLE",
@@ -373,18 +574,27 @@ function extractRouting(input) {
     warnings
   };
 }
+function extractRouting(input) {
+  assertRoutableAddress(input.destination);
+  const flags = resolveFlags(input.flags);
+  if (flags.experimentalRouting) {
+    return extractRoutingExperimental(input);
+  }
+  return extractRoutingStable(input);
+}
 
 // src/routing/extractFromTx.ts
 var import_stellar_sdk4 = __toESM(require("@stellar/stellar-sdk"));
 var { Transaction } = import_stellar_sdk4.default;
-function extractRoutingFromTx(tx) {
+function extractRoutingFromTx(tx, flags) {
   const op = tx.operations[0];
   if (!op || op.type !== "payment") return null;
   return extractRouting({
     destination: op.destination,
     memoType: tx.memo.type,
     memoValue: tx.memo.value?.toString() ?? null,
-    sourceAccount: tx.source ?? null
+    sourceAccount: tx.source ?? null,
+    flags
   });
 }
 
@@ -398,14 +608,24 @@ function routingIdAsBigInt(routingId) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   AddressParseError,
+  DEFAULT_ROUTING_FLAGS,
   ExtractRoutingError,
   decodeMuxed,
   detect,
   encodeMuxed,
   extractRouting,
   extractRoutingFromTx,
+  generateMemo,
+  generateMemoHash,
+  generateMemoId,
+  generateMemoText,
   normalizeMemoTextId,
   parse,
+  resolveFlags,
   routingIdAsBigInt,
-  validate
+  validate,
+  validateMemo,
+  validateMemoHash,
+  validateMemoId,
+  validateMemoText
 });

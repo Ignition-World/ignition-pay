@@ -1,0 +1,15 @@
+{
+  "appName": "Ignition Pay",
+  "bundleId": "com.ignitionpay.app",
+  "packageName": "com.ignitionpay.app",
+  "privacyPolicyUrl": "https://example.com/privacy",
+  "supportUrl": "https://example.com/support",
+  "marketingUrl": "https://example.com",
+  "shortDescription": "Secure Stellar wallet and payment experience",
+  "fullDescription": "Ignition Pay provides a secure, user-friendly experience for managing Stellar assets, sending payments, and interacting with supported payment flows.",
+  "releaseNotes": "Initial release candidate",
+  "screenshots": {
+    "ios": [],
+    "android": []
+  }
+}

@@ -3,16 +3,16 @@ title: "Go: Deposit Routing Service"
 description: "Integrating Stellar Address Kit into your Go backend."
 ---
 
-When building a deposit service in Go, you need to reconcile incoming payments with your internal user accounts.
+When building a deposit service in Go, you need to reconcile incoming payments with your internal user accounts. The Go package is optimized for high-throughput routing and is a good fit for background workers and stream processors.
 
-## Basic Integration
+## Basic integration
 
 ```go
 package main
 
 import (
     "fmt"
-    "github.com/Boxkit-Labs/stellar-address-kit/packages/core-go/addresskit"
+    addresskit "github.com/Boxkit-Labs/stellar-address-kit/packages/core-go/addresskit"
 )
 
 func handleIncomingPayment(dest string, memoType string, memoValue string) {
@@ -27,10 +27,26 @@ func handleIncomingPayment(dest string, memoType string, memoValue string) {
         return
     }
 
-    // Check internal database for user with ID: result.RoutingId
-    // Base G-address of your pooled account: result.Address
+    // Check the database for a user with ID: result.RoutingId
+    // Base G-address of the pooled account: result.Address
 }
 ```
 
-## Performance Note
-The Go implementation is optimized for high-throughput environments and performs zero heap allocations in the hot path where possible.
+## Routing worker example
+
+A common architecture is to stream payments for a pooled account and route them into user balances:
+
+```go
+func processPayment(op operations.Payment) {
+    if addresskit.IsMuxed(op.To) {
+        decoded, _ := addresskit.DecodeMuxedAddress(op.To)
+        routeToUserBalance(decoded.ID, op.Amount, op.Asset.Code)
+    }
+}
+```
+
+## Best practices
+
+1. Make the routing step idempotent so reconnects do not double-credit users.
+2. Record the operation ID or transaction hash in your database.
+3. Validate addresses before processing withdrawals.

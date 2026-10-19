@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Boxkit-Labs/stellar-address-kit/examples/go-payment-listener/internal/config"
 	"github.com/Boxkit-Labs/stellar-address-kit/examples/go-payment-listener/internal/listener"
@@ -53,6 +54,9 @@ func main() {
 		client,
 		cfg.Horizon.TargetAccount,
 		cfg.Horizon.StartCursor,
+		cfg.Retry.MaxAttempts,
+		time.Duration(cfg.Retry.BaseDelaySeconds)*time.Second,
+		time.Duration(cfg.Retry.MaxDelaySeconds)*time.Second,
 		log,
 	)
 

@@ -43,6 +43,31 @@ void main() {
       expect(s, contains(baseG));
       expect(s, contains('99'));
     });
+
+    test('muxedAddressString re-encodes to known M address', () {
+      final dto = DecodedMuxedAddress(baseG: baseG, id: BigInt.zero);
+      expect(dto.muxedAddressString, equals(knownMAddress));
+    });
+
+    test('muxedAddressString round-trips for non-zero id', () {
+      final dto = DecodedMuxedAddress(baseG: baseG, id: BigInt.from(42));
+      final mAddress = dto.muxedAddressString;
+      expect(mAddress.startsWith('M'), isTrue);
+      // Decode back and verify
+      final decoded = MuxedAddress.decode(mAddress);
+      expect(decoded.baseG, equals(baseG));
+      expect(decoded.id, equals(BigInt.from(42)));
+    });
+
+    test('isBaseAccount is true when id is zero', () {
+      final dto = DecodedMuxedAddress(baseG: baseG, id: BigInt.zero);
+      expect(dto.isBaseAccount, isTrue);
+    });
+
+    test('isBaseAccount is false when id is non-zero', () {
+      final dto = DecodedMuxedAddress(baseG: baseG, id: BigInt.from(1));
+      expect(dto.isBaseAccount, isFalse);
+    });
   });
 
   group('MuxedAddress.decode', () {
