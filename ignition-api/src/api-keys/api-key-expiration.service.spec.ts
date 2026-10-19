@@ -55,4 +55,24 @@ describe('ApiKeyExpirationService', () => {
       }),
     );
   });
+
+  it('exposes expireApiKeys(), the entry point main.ts calls (Issue #781)', async () => {
+    await service.expireApiKeys();
+
+    expect(prisma.apiKey.updateMany).toHaveBeenCalled();
+  });
+
+  it('runs the expiry sweep only once per process (Issue #781)', async () => {
+    await service.expireApiKeys();
+    const callsAfterFirstSweep = prisma.apiKey.updateMany.mock.calls.length;
+
+    // The bootstrap flow in main.ts and AppModule.onModuleInit both end up
+    // here - the second one must not re-run the sweep.
+    await service.expireApiKeys();
+    await service.deactivateExpiredKeys();
+
+    expect(prisma.apiKey.updateMany.mock.calls.length).toBe(
+      callsAfterFirstSweep,
+    );
+  });
 });

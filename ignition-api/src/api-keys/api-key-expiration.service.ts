@@ -10,11 +10,43 @@ import { EMAIL_JOB_SEND_NOTIFICATION } from '../queue/queue.jobs';
 export class ApiKeyExpirationService {
   private readonly logger = new Logger(ApiKeyExpirationService.name);
 
+  /**
+   * Issue #781 — the expiry sweep is kicked off from two places: the
+   * bootstrap flow in `main.ts` and `AppModule`'s `onModuleInit`. The cached
+   * promise below makes the sweep run at most once per process, so the second
+   * call site is a no-op that reuses the first one's result. Without it, every
+   * replica in a multi-replica deploy runs the sweep at the same time and the
+   * same rows are expired twice.
+   */
+  private expirySweep: Promise<number> | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     @InjectQueue(QUEUE_EMAIL) private readonly emailQueue: Queue,
   ) {}
+
+  /**
+   * Entry point for the expiry sweep.
+   *
+   * `main.ts` calls this during bootstrap, and `AppModule.onModuleInit` ends
+   * up here too. The sweep runs once; later calls await the same promise.
+   */
+  async expireApiKeys(): Promise<number> {
+    if (!this.expirySweep) {
+      this.expirySweep = this.runExpirySweep();
+    }
+    return this.expirySweep;
+  }
+
+  /**
+   * Alias kept for the `AppModule.onModuleInit` call site. It funnels
+   * through {@link expireApiKeys} so the "already ran" guard applies to it as
+   * well.
+   */
+  async deactivateExpiredKeys(): Promise<number> {
+    return this.expireApiKeys();
+  }
 
   get expiryMs(): number {
     const configured = this.config.get<string>('API_KEY_TTL_MS');
@@ -25,7 +57,7 @@ export class ApiKeyExpirationService {
       : 30 * 24 * 60 * 60 * 1000;
   }
 
-  async deactivateExpiredKeys(): Promise<number> {
+  private async runExpirySweep(): Promise<number> {
     const now = new Date();
     const cutoff = new Date(now.getTime() - this.expiryMs);
 
