@@ -11,7 +11,8 @@ export class ContractEventsProcessor {
 
   constructor(@InjectRedis() private readonly redis: Redis) {}
 
-  @Process('process-batch')
+  // Cap concurrency so a Soroban RPC slot gap cannot make jobs pile up in parallel.
+  @Process({ name: 'process-batch', concurrency: 2 })
   async handleEventBatch(job: Job<{ events: any[]; ledgerSequence: number }>) {
     const { events, ledgerSequence } = job.data;
 
@@ -27,7 +28,14 @@ export class ContractEventsProcessor {
 
     try {
       // 3. Process contract events and side effects transactionally
-      await this.processEvents(events);
+      // A reconnect can replay the same effect; only the first sighting is processed.
+      const fresh: any[] = [];
+      for (const event of events) {
+        const id = event?.id ?? event?.effectId;
+        const first = id === undefined || (await this.redis.set(`blockchain:contract-events:seen:${id}`, '1', 'EX', 86400, 'NX')) === 'OK';
+        if (first) fresh.push(event);
+      }
+      await this.processEvents(fresh);
 
       // 4. Atomically update the persistent checkpoint after successful processing
       await this.redis.set(this.CHECKPOINT_KEY, ledgerSequence.toString());
