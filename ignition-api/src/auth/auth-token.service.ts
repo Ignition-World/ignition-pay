@@ -185,8 +185,6 @@ export class AuthTokenService {
     const accessToken = this.jwt.sign(accessPayload, {
       secret: this.config.get<string>('JWT_SECRET', 'default-secret'),
       expiresIn: this.ACCESS_TTL,
-      secret: this.config.get<string>('JWT_SECRET', 'stellaraid-default-secret'),
-      expiresIn: '15m',
     });
 
     const newRefreshToken = this.jwt.sign({ sub: user.id }, {
