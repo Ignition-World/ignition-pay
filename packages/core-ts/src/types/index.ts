@@ -58,4 +58,4 @@ export interface ExtractOptions {
    * `"memo-ignored"` warning is added to the result.
    */
   incomingMemo?: string;
-}
+}export * from "./generated";

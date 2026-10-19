@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["REPLACE_WITH_TEAM_ID.com.ignitionworld.ignitionpay"],
+        "components": [
+          { "/": "/pay/*" },
+          { "/": "/send/*" },
+          { "/": "/receive/*" },
+          { "/": "/transaction/*" }
+        ]
+      }
+    ]
+  }
+}

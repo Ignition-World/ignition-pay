@@ -1,10 +1,18 @@
 import 'dart:typed_data';
+import '../exceptions.dart';
 import '../util/strkey.dart';
 
 class MuxedEncoder {
+  static final BigInt _uint64Max = BigInt.parse('18446744073709551615');
+
   static String encodeMuxed(List<int> ed25519, BigInt id) {
     if (ed25519.length != 32) {
       throw ArgumentError('ED25519 public key must be 32 bytes');
+    }
+    if (id < BigInt.zero || id > _uint64Max) {
+      throw StellarAddressException(
+        'Muxed ID $id is outside the uint64 range',
+      );
     }
 
     // Payload for Muxed address: version (1) + pubkey (32) + id (8)

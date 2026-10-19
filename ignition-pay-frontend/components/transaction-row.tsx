@@ -1,68 +1,217 @@
 'use client'
 
-import { ArrowUpRight, ArrowDownLeft } from 'lucide-react'
+import {
+  ArrowUpRight,
+  ArrowDownLeft,
+  Loader2,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
+  RefreshCw,
+  ExternalLink,
+} from 'lucide-react'
+import Link from 'next/link'
+import type { Transaction, OptimisticTransaction } from '@/features/history/models'
+import { isOptimisticTransaction } from '@/features/history/models'
+// The row now navigates to a dedicated transaction detail page instead of opening an inline sheet.
+import { useTranslation } from '@/lib/i18n'
 
-interface TransactionRowProps {
-  id: string
-  type: 'sent' | 'received'
-  asset: string
-  amount: number
-  recipient: string
-  timestamp: Date
-  status: 'confirmed' | 'pending'
+/**
+ * Box-model classes shared by a transaction row and its skeleton (#625).
+ *
+ * Exported so a test can assert the placeholder occupies the same space as the
+ * row it stands in for.
+ */
+export const TRANSACTION_ROW_SHELL = 'flex items-center justify-between py-4 px-4 rounded-lg'
+
+/**
+ * Status badge component that handles both real and optimistic transactions.
+ * Optimistic transactions show a loading spinner to indicate pending confirmation.
+ * Pairs colors with distinct status icons and clear text labels for accessibility.
+ */
+function TransactionStatusBadge({
+  transaction,
+}: {
+  transaction: Transaction | OptimisticTransaction
+}) {
+  const { t } = useTranslation()
+  const isOptimistic = isOptimisticTransaction(transaction)
+
+  // A confirmed optimistic entry falls through to the normal status badge, so
+  // the user sees Pending become Confirmed on the same row.
+  if (isOptimistic && transaction.status === 'pending') {
+    return (
+      <span
+        className="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-500 inline-flex items-center gap-1 font-medium"
+        aria-label={t('transactionRow.pendingConfirmation')}
+        aria-live="polite"
+      >
+        <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+        {t('common.pending')}...
+      </span>
+    )
+  }
+
+  const statusColors: Record<Transaction['status'], string> = {
+    pending: 'bg-yellow-500/20 text-yellow-500',
+    processing: 'bg-blue-500/20 text-blue-500',
+    completed: 'bg-green-500/20 text-green-500',
+    failed: 'bg-red-500/20 text-red-500',
+    refunded: 'bg-purple-500/20 text-purple-500',
+    confirmed: 'bg-green-500/20 text-green-500',
+  }
+
+  const statusIcons: Record<Transaction['status'], React.ReactNode> = {
+    pending: <Clock size={12} aria-hidden="true" />,
+    processing: <RefreshCw size={12} className="animate-spin" aria-hidden="true" />,
+    completed: <CheckCircle2 size={12} aria-hidden="true" />,
+    failed: <XCircle size={12} aria-hidden="true" />,
+    refunded: <RotateCcw size={12} aria-hidden="true" />,
+    confirmed: <CheckCircle2 size={12} aria-hidden="true" />,
+  }
+
+  const statusLabel: Record<Transaction['status'], string> = {
+    pending: t('common.pending'),
+    processing: t('common.processing'),
+    completed: t('common.completed'),
+    failed: t('common.failed'),
+    refunded: t('common.refunded'),
+    confirmed: t('common.confirmed'),
+  }
+
+  return (
+    <span
+      className={`text-xs px-2 py-1 rounded-full inline-flex items-center gap-1 font-medium ${
+        statusColors[transaction.status]
+      }`}
+      aria-label={`Status: ${statusLabel[transaction.status]}`}
+    >
+      {statusIcons[transaction.status]}
+      <span>{statusLabel[transaction.status]}</span>
+    </span>
+  )
 }
 
-export function TransactionRow({
-  type,
-  asset,
-  amount,
-  recipient,
-  timestamp,
-  status,
-}: TransactionRowProps) {
+interface TransactionRowProps {
+  transaction: Transaction | OptimisticTransaction
+  /**
+   * tabIndex for roving focus (issue #628). A list managed by
+   * {@link useRovingFocus} passes 0 for the active row and -1 for the others, so
+   * the whole list is one tab stop. Omitted, the row behaves as an ordinary link.
+   */
+  tabIndex?: number
+}
+
+export function TransactionRow({ transaction, tabIndex }: TransactionRowProps) {
+  const { t } = useTranslation()
+  const { type, asset, amount, recipient, timestamp, status } = transaction
   const displayRecipient = recipient.slice(0, 6) + '...' + recipient.slice(-4)
   const isSent = type === 'sent'
 
-  const formattedDate = timestamp.toLocaleDateString('en-US', {
+  // Horizon reports ledger close times in UTC, so name the timezone the row is
+  // shown in and expose the exact UTC instant for comparison.
+  const formattedDate = timestamp.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZoneName: 'short',
   })
+  const utcTimestamp = Number.isNaN(timestamp.getTime()) ? undefined : timestamp.toISOString()
+
+  const isOptimistic = isOptimisticTransaction(transaction)
+  const txId = isOptimistic ? transaction.optimisticId : transaction.id
 
   return (
-    <div className="flex items-center justify-between py-4 px-4 rounded-lg hover:bg-muted/50 transition-colors border border-transparent hover:border-border">
+    <Link
+      href={isOptimistic ? '#' : `/transactions/${txId}`}
+      data-roving-item=""
+      tabIndex={tabIndex}
+      className={`${TRANSACTION_ROW_SHELL} transition-colors border ${
+        // A roving list is only usable if you can see where you are, and the row
+        // had no focus styling at all.
+        'outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background '
+      }${
+        isOptimistic
+          ? 'bg-yellow-500/5 border-yellow-500/30 hover:bg-yellow-500/10'
+          : 'border-transparent hover:bg-muted/50 hover:border-border'
+      }`}
+    >
       <div className="flex items-center gap-4 flex-1">
         <div
           className={`w-12 h-12 rounded-full flex items-center justify-center ${
             isSent ? 'bg-red-500/20' : 'bg-green-500/20'
-          }`}
+          } ${isOptimistic ? 'opacity-60' : ''}`}
         >
           {isSent ? (
-            <ArrowUpRight size={20} className="text-red-500" />
+            <ArrowUpRight size={20} className="text-red-500" aria-label="Sent icon" />
           ) : (
-            <ArrowDownLeft size={20} className="text-green-500" />
+            <ArrowDownLeft size={20} className="text-green-500" aria-label="Received icon" />
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-foreground">
-            {isSent ? 'Sent' : 'Received'} {asset}
+          <p className={`font-semibold ${isOptimistic ? 'text-muted-foreground' : 'text-foreground'}`}>
+            {isSent ? t('transactionRow.sent') : t('transactionRow.received')} {asset}
           </p>
           <p className="text-sm text-muted-foreground truncate">{displayRecipient}</p>
         </div>
       </div>
 
       <div className="flex flex-col items-end gap-1">
-        <p className={`font-semibold ${isSent ? 'text-red-500' : 'text-green-500'}`}>
+        <p className={`font-semibold ${isSent ? 'text-red-500' : 'text-green-500'} ${isOptimistic ? 'opacity-70' : ''}`}>
           {isSent ? '-' : '+'}
           {amount.toFixed(4)} {asset}
         </p>
-        <p className="text-xs text-muted-foreground">{formattedDate}</p>
-        {status === 'pending' && (
-          <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-500">
-            Pending
-          </span>
-        )}
+        <time
+          className="text-xs text-muted-foreground"
+          dateTime={utcTimestamp}
+          title={utcTimestamp ? `${utcTimestamp} (UTC)` : undefined}
+        >
+          {formattedDate}
+        </time>
+        <TransactionStatusBadge transaction={transaction} />
+      </div>
+    </Link>
+  )
+}
+
+/**
+ * Loading placeholder for {@link TransactionRow} (#625).
+ *
+ * Mirrors the row's box model exactly — `py-4 px-4`, the `w-12 h-12` avatar, the
+ * two-line left column and the three-line right column — so a list of skeletons
+ * occupies the same height as the list that replaces it.
+ *
+ * @param props - `count` is how many placeholder rows to draw.
+ * @returns A non-interactive list of placeholder rows.
+ */
+export function TransactionRowSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <div role="status" aria-live="polite">
+      <span className="sr-only">Loading transactions</span>
+
+      <div className="divide-y divide-border" aria-hidden="true">
+        {Array.from({ length: count }, (_, index) => (
+          <div
+            key={index}
+            className={`${TRANSACTION_ROW_SHELL} border border-transparent animate-pulse`}
+          >
+            <div className="flex items-center gap-4 flex-1">
+              <div className="w-12 h-12 rounded-full bg-muted" />
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="h-6 w-32 rounded bg-muted" />
+                <div className="h-5 w-40 rounded bg-muted" />
+              </div>
+            </div>
+
+            <div className="flex flex-col items-end gap-1">
+              <div className="h-6 w-28 rounded bg-muted" />
+              <div className="h-4 w-20 rounded bg-muted" />
+              <div className="h-6 w-20 rounded-full bg-muted" />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

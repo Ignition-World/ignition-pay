@@ -1,0 +1,2 @@
+import 'package:stellar/stellar.dart';
+Future<bool> check(Server s, String a, String c, String i) async => (await s.accounts.account(a)).balances.any((b) => b.assetType != 'native' && b.assetCode == c && b.assetIssuer == i);

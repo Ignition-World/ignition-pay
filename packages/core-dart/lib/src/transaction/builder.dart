@@ -1,7 +1,6 @@
+import 'dart:convert';
 import '../address/detect.dart';
 import '../address/codes.dart';
-import '../muxed/decode.dart';
-import '../exceptions.dart';
 import 'transaction.dart';
 
 /// Exception thrown when transaction validation fails.
@@ -23,15 +22,36 @@ class TransactionValidationException implements Exception {
 /// Uses the builder pattern to create [Transaction] objects with
 /// validation at each step.
 class TransactionBuilder {
+  static const int _defaultBaseFee = 100;
+  static int _networkBaseFee = _defaultBaseFee;
+  
   String? _sourceAccount;
   BigInt? _sequenceNumber;
-  int _fee = 100;
+  int _fee = _defaultBaseFee;
   String _memoType = 'none';
   String? _memoValue;
   DateTime? _timeBoundMin;
   DateTime? _timeBoundMax;
   final List<PaymentOperation> _operations = [];
   final List<String> _errors = [];
+  
+  /// Updates the network base fee used for minimum fee validation.
+  /// This should be called with the current network fee fetched from the Stellar network.
+  static void setNetworkBaseFee(int fee) {
+    if (fee < _defaultBaseFee) {
+      _networkBaseFee = _defaultBaseFee;
+    } else {
+      _networkBaseFee = fee;
+    }
+  }
+  
+  /// Gets the current network base fee used for minimum fee validation.
+  static int getNetworkBaseFee() => _networkBaseFee;
+  
+  /// Resets the network base fee to the default 100 stroops.
+  static void resetNetworkBaseFee() {
+    _networkBaseFee = _defaultBaseFee;
+  }
 
   /// Sets the source account for the transaction.
   /// Must be a valid Stellar G or M address.
@@ -51,12 +71,13 @@ class TransactionBuilder {
   }
 
   /// Sets the fee for the transaction in stroops.
-  /// Must be at least 100 stroops (base fee).
-  TransactionBuilder setFee(int fee) {
-    if (fee < 100) {
-      _errors.add('Fee must be at least 100 stroops (base fee)');
+  /// Must be at least the current network base fee.
+  TransactionBuilder setFee([int? fee]) {
+    final finalFee = fee ?? _defaultBaseFee;
+    if (finalFee < _networkBaseFee) {
+      _errors.add('Fee must be at least $_networkBaseFee stroops (current network base fee)');
     }
-    _fee = fee;
+    _fee = finalFee;
     return this;
   }
 
@@ -75,7 +96,8 @@ class TransactionBuilder {
     if (text.isEmpty) {
       _errors.add('Memo text cannot be empty');
     }
-    if (text.length > 28) {
+    final byteLength = utf8.encode(text).length;
+    if (byteLength > 28) {
       _errors.add('Memo text must be 28 bytes or less');
     }
     _memoType = 'text';
@@ -161,8 +183,7 @@ class TransactionBuilder {
     }
     final kind = detect(account);
     if (kind == null || kind == AddressKind.c) {
-      _errors.add(
-          'Invalid source account: must be a valid G or M address');
+      _errors.add('Invalid source account: must be a valid G or M address');
     }
   }
 
@@ -173,8 +194,7 @@ class TransactionBuilder {
     }
     final kind = detect(destination);
     if (kind == null) {
-      _errors.add(
-          'Invalid destination: must be a valid Stellar address');
+      _errors.add('Invalid destination: must be a valid Stellar address');
     }
   }
 
@@ -242,8 +262,8 @@ List<String> validateTransaction(Transaction transaction) {
     errors.add('Invalid sequence number: ${transaction.sequenceNumber}');
   }
 
-  if (transaction.fee < 100) {
-    errors.add('Fee must be at least 100 stroops');
+  if (transaction.fee < TransactionBuilder.getNetworkBaseFee()) {
+    errors.add('Fee must be at least ${TransactionBuilder.getNetworkBaseFee()} stroops');
   }
 
   if (transaction.operations.isEmpty) {
@@ -258,8 +278,7 @@ List<String> validateTransaction(Transaction transaction) {
     }
     final amount = num.tryParse(op.amount);
     if (amount == null || amount <= 0) {
-      errors.add(
-          'Operation $i: invalid amount "${op.amount}"');
+      errors.add('Operation $i: invalid amount "${op.amount}"');
     }
   }
 
