@@ -1,4 +1,11 @@
-import { IsEnum } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 export enum KYCStatusEnum {
   VERIFIED = 'VERIFIED',
@@ -9,4 +16,10 @@ export enum KYCStatusEnum {
 export class UpdateKYCStatusDto {
   @IsEnum(KYCStatusEnum)
   status: KYCStatusEnum;
+
+  @ValidateIf((o: UpdateKYCStatusDto) => o.status === KYCStatusEnum.REJECTED)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason?: string;
 }

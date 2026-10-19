@@ -13,7 +13,7 @@
   "topbarLinks": [
     {
       "name": "GitHub",
-      "url": "https://github.com/Boxkit-Labs/stellar-address-kit"
+      "url": "https://github.com/Ignition-World/ignition-pay"
     }
   ],
   "anchors": [
@@ -95,7 +95,7 @@
   "footerLinks": [
     {
       "name": "MIT License",
-      "url": "https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/LICENSE"
+      "url": "https://github.com/Ignition-World/ignition-pay/blob/main/LICENSE"
     },
     {
       "name": "NPM",
@@ -107,10 +107,10 @@
     },
     {
       "name": "Go Reference",
-      "url": "https://pkg.go.dev/github.com/Boxkit-Labs/stellar-address-kit/packages/core-go"
+      "url": "https://pkg.go.dev/github.com/Ignition-World/ignition-pay/packages/core-go"
     }
   ],
   "footerSocials": {
-    "github": "https://github.com/Boxkit-Labs/stellar-address-kit"
+    "github": "https://github.com/Ignition-World/ignition-pay"
   }
 }

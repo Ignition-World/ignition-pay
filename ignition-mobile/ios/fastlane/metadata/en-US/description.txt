@@ -1,0 +1,12 @@
+Ignition Pay is a full-stack, cross-platform Stellar wallet that delivers a
+native-grade payment experience on Android, iOS, and web from a single
+codebase.
+
+- Send and receive XLM, USDC, and any Stellar-issued asset instantly
+- Manage trustlines, fund accounts, and review transaction history
+- Deposit and withdraw fiat through regulated anchors (SEP-6 / SEP-24 / SEP-31)
+- Invoke Soroban smart contracts directly from your wallet
+- Biometric unlock, deep links, and offline-resilient transaction drafts
+
+Ignition Pay is open source and non-custodial: you control your keys, and
+every contract and API powering the app is auditable.

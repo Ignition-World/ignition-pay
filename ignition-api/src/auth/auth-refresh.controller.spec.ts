@@ -25,7 +25,9 @@ describe('AuthRefreshController', () => {
         tokenType: 'Bearer' as const,
       };
 
-      (tokenService.validateAndRotate as jest.Mock).mockResolvedValue(expectedResponse);
+      (tokenService.validateAndRotate as jest.Mock).mockResolvedValue(
+        expectedResponse,
+      );
 
       const result = await controller.refresh(dto);
 
@@ -41,7 +43,9 @@ describe('AuthRefreshController', () => {
         tokenType: 'Bearer' as const,
       };
 
-      (tokenService.validateAndRotate as jest.Mock).mockResolvedValue(expectedResponse);
+      (tokenService.validateAndRotate as jest.Mock).mockResolvedValue(
+        expectedResponse,
+      );
 
       const result = await controller.refresh(dto);
 

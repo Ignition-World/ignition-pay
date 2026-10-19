@@ -1,3 +1,3 @@
 export class RegisterResponseDto {
-  message!: string;
+  message!: string; 
 }

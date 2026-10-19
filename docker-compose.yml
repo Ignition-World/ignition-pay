@@ -1,0 +1,62 @@
+# Lightweight local development infrastructure for Ignition Pay.
+#
+# This Compose file deliberately runs ONLY infrastructure services
+# (PostgreSQL + Redis). The API (`ignition-api`), frontend
+# (`ignition-pay-frontend`), and mobile app (`ignition-mobile`) are run
+# natively on the host for fast hot-reload and minimal resource use.
+#
+# Usage:
+#   docker compose up -d          # start in background
+#   docker compose ps             # status
+#   docker compose logs -f        # tail logs
+#   docker compose stop           # stop, preserve volumes
+#   docker compose down           # stop + remove containers, keep data
+#   docker compose down -v        # full reset (drop volumes + data)
+#
+# Connection strings (host-side, see ignition-api/.env.example):
+#   postgres://postgres:postgres@localhost:5432/stellaraid
+#   redis://localhost:6379
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ignition-pay-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: stellaraid
+    ports:
+      # Bind to loopback only so dev DBs aren't exposed to the LAN.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d stellaraid"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: ignition-pay-redis
+    restart: unless-stopped
+    # Enable AOF persistence so dev data survives a `docker compose stop`.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres_data:
+    name: ignition-pay-postgres-data
+  redis_data:
+    name: ignition-pay-redis-data

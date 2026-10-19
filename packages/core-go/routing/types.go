@@ -13,6 +13,10 @@ type RoutingInput struct {
 	MemoType      string `json:"memoType,omitempty"`
 	MemoValue     string `json:"memoValue,omitempty"`
 	SourceAccount string `json:"sourceAccount,omitempty"`
+
+	// Flags controls optional routing behaviour for this call.
+	// A nil pointer means "use defaults" (stable path).
+	Flags *RoutingFlags `json:"flags,omitempty"`
 }
 
 // RoutingResult represents routing output data.

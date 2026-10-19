@@ -9,7 +9,9 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { WalletNetwork } from '../../wallets/dto/create-wallet.dto';
 
 export class UpdateAddressDto {
-  @ApiPropertyOptional({ description: 'Wallet ID to allocate/reallocate this address to' })
+  @ApiPropertyOptional({
+    description: 'Wallet ID to allocate/reallocate this address to',
+  })
   @IsString()
   @IsOptional()
   walletId?: string;

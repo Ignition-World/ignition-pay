@@ -1,0 +1,2 @@
+json_key_file("fastlane/play-console-key.json") # not committed — see docs/STORE_SETUP.md
+package_name("com.ignitionpay.app")
