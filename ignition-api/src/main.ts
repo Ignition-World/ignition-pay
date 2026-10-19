@@ -81,7 +81,20 @@ function registerGracefulShutdown(
     try {
       for (const name of QUEUE_NAMES) {
         const queue = app.get<Queue>(getQueueToken(name), { strict: false });
-        await queue?.pause();
+        if (!queue) continue;
+
+        // Issue #775: `pause()` is a *global* pause. It renames the wait list
+        // so the worker stops picking up new jobs, but the job that is
+        // already being processed is neither cancelled nor awaited - it is
+        // still running when `process.exit(0)` below kills the process, and the
+        // analytics event it was writing is lost on every rolling deploy.
+        //
+        // `whenCurrentJobsFinished()` resolves once the in-flight jobs of this
+        // queue have completed. Draining here also happens *before*
+        // `app.close()` runs `onModuleDestroy` (which disconnects Prisma), so
+        // a drained job can still persist what it was writing.
+        await queue.pause();
+        await queue.whenCurrentJobsFinished();
       }
 
       // app.close() stops the HTTP server from accepting new connections,
