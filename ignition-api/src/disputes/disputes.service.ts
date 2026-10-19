@@ -193,6 +193,9 @@ export class DisputesService {
           resourceId: dispute.id,
           details: JSON.stringify({
             action: 'DISPUTE_STATUS_TRANSITION',
+            // Keep why the dispute was raised next to how it was resolved.
+            reason: dispute.reason,
+            description: dispute.description,
             ...details,
           }),
         },
