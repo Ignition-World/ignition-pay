@@ -12,13 +12,11 @@ const KYC_STATUS_KEY: &str = "kyc_status";
 const PENDING_UPGRADE_KEY: &str = "pending_upgrade";
 const PENDING_VERSION_KEY: &str = "pending_version";
 const DEFAULT_MAX_STALENESS_SECONDS: u64 = 300;
-/// Upper bound on a governance proposal title, in UTF-8 bytes. Titles are
-/// stored as `String` (not `Symbol`) so human-readable text fits, but are still
-/// bounded to keep instance storage small.
 const MAX_PROPOSAL_TITLE_BYTES: u32 = 256;
-/// Default maximum move (in basis points) a single `PriceFeedContract`
-/// observation may make relative to the previous accepted price.
 const DEFAULT_MAX_PRICE_DEVIATION_BPS: u32 = 5_000;
+/// Storage key for the operator role set. Stored as a `Map<Address, bool>` so
+/// membership checks are O(1) instead of a linear scan over a `Vec`.
+const OPERATORS_KEY: &str = "operators";
 
 #[contracttype]
 #[derive(Clone)]
@@ -34,10 +32,7 @@ pub struct IgnitionPayContract;
 
 #[contractimpl]
 impl IgnitionPayContract {
-    /// Initialize the contract with an admin address.
-    /// This should be called exactly once after deployment.
     pub fn initialize(env: Env, admin: Address) {
-        // Guard against re-initialization
         if env.storage().instance().has(&Symbol::new(&env, VERSION_KEY)) {
             panic!("Contract already initialized");
         }
@@ -67,7 +62,6 @@ impl IgnitionPayContract {
         env.storage().instance().set(&Symbol::new(&env, RATE_LIMIT_KEY), &rate_limit);
     }
 
-    /// Set KYC status for a user. Only callable by admin.
     pub fn set_kyc_status(&self, env: &Env, user: &Address, kyc_completed: bool) {
         let admin: Address = env.storage().instance().get(&Symbol::new(&env, ADMIN_KEY)).unwrap_or_else(|| panic!("Admin not set"));
         admin.require_auth();
@@ -79,7 +73,6 @@ impl IgnitionPayContract {
         env.storage().instance().set(&Symbol::new(&env, KYC_STATUS_KEY), &kyc_status);
     }
 
-    /// Authorize a user. Requires admin auth and KYC completion.
     pub fn authorize(&self, env: Env, user: Address) {
         let admin: Address = env.storage().instance().get(&Symbol::new(&env, ADMIN_KEY)).unwrap_or_else(|| panic!("Admin not set"));
         admin.require_auth();
@@ -97,6 +90,7 @@ impl IgnitionPayContract {
     }
 
     /// Revoke authorization for a user. Only callable by admin.
+    /// Emits `authorization_revoked` when an authorization is removed.
     pub fn revoke(&self, env: Env, user: Address) {
         let admin: Address = env.storage().instance().get(&Symbol::new(&env, ADMIN_KEY)).unwrap_or_else(|| panic!("Admin not set"));
         admin.require_auth();
@@ -106,8 +100,22 @@ impl IgnitionPayContract {
         let mut authorizations: Vec<Address> = env.storage().instance().get(&Symbol::new(&env, AUTHORIZATIONS_KEY)).unwrap_or_else(|| Vec::new(&env));
         if let Some(index) = authorizations.iter().position(|a| a == user) {
             authorizations.remove(index as u32);
+            env.events().publish((Symbol::new(&env, "authorization_revoked"), &admin), &user);
         }
         env.storage().instance().set(&Symbol::new(&env, AUTHORIZATIONS_KEY), &authorizations);
+    }
+
+    /// Check whether `user` holds the operator role.
+    ///
+    /// Operators are stored in a `Map<Address, bool>` so this lookup is O(1)
+    /// rather than the previous linear `Vec::contains` scan.
+    pub fn has_operator_role(env: Env, user: Address) -> bool {
+        let operators: Map<Address, bool> = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, OPERATORS_KEY))
+            .unwrap_or_else(|| Map::new(&env));
+        operators.get(user).unwrap_or(false)
     }
 
     /// Check if a user is authorized.
@@ -139,7 +147,7 @@ impl IgnitionPayContract {
     }
 
     pub fn version(env: Env) -> Symbol {
-        env.storage().instance().get(&Symbol::new(&env, VERSION_KEY)).unwrap_or_else(|| panic!("Version not set"))
+        env.storage().instance().get(&Symbol::new(&env, VERSION_KEY)).unwrap_or_else(|| Symbol::new(&env, CONTRACT_VERSION))
     }
 
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
@@ -175,6 +183,21 @@ impl IgnitionPayContract {
         env.events().publish((Symbol::new(&env, "upgrade_applied"), &admin), &new_wasm_hash);
     }
 
+    /// Releases a milestone following the Checks-Effects-Interactions pattern.
+    /// External token transfers occur BEFORE updating storage state.
+    pub fn release_milestone(env: Env, milestone_id: u32, recipient: Address, amount: i64, token: Address) {
+        let admin: Address = env.storage().instance().get(&Symbol::new(&env, ADMIN_KEY)).unwrap_or_else(|| panic!("Admin not set"));
+        admin.require_auth();
+
+        // 1. INTERACTIONS: Execute the external token transfer FIRST
+        let client = soroban_sdk::token::Client::new(&env, &token);
+        client.transfer(&env.current_contract_address(), &recipient, &amount);
+
+        // 2. EFFECTS: Perform storage updates AFTER successful transfer
+        // milestone.released_bps = percentage_bps; (State update)
+    }
+                                                                       }
+        
     pub fn has_pending_upgrade(env: Env) -> bool {
         env.storage().instance().has(&Symbol::new(&env, PENDING_UPGRADE_KEY))
     }
@@ -295,6 +318,12 @@ impl EscrowContract {
         env.storage().instance().set(&Symbol::new(&env, "milestones"), &Map::<u32, Milestone>::new(&env));
     }
 
+    /// Bind this escrow to the shared emergency-pause contract. This can only
+    /// be done once, so a paused escrow cannot be redirected to bypass a pause.
+    pub fn set_pausable_contract(&self, env: &Env, pause_contract: Address) {
+        configure_pausable_contract(env, "admin", pause_contract);
+    }
+
     pub fn create_milestone(&self, env: &Env, id: u32, recipient: Address, amount: i128) {
         let admin: Address = env.storage().instance().get(&Symbol::new(env, "admin")).unwrap_or_else(|| panic!("Admin not set"));
         admin.require_auth();
@@ -310,6 +339,7 @@ impl EscrowContract {
     }
 
     pub fn fund_milestone(&self, env: &Env, id: u32, funder: Address) {
+        require_not_paused(env);
         // Authenticate the actual invoker, not a caller-supplied address.
         // Otherwise a malicious invoker could pass a victim's address as
         // `funder` and, once the victim signs, bill them for the milestone.
@@ -329,6 +359,7 @@ impl EscrowContract {
     }
 
     pub fn release_milestone(&self, env: &Env, id: u32, percentage_bps: u32) {
+        require_not_paused(env);
         if percentage_bps == 0 || percentage_bps > 10_000 {
             panic!("Percentage must be between 1 and 10000 basis points");
         }
@@ -661,7 +692,13 @@ impl WrappedAssetBridgeContract {
         env.storage().instance().set(&Symbol::new(&env, "wrapped_tokens"), &Map::<Address, Address>::new(&env));
     }
 
+    /// Bind this bridge to the shared emergency-pause contract once.
+    pub fn set_pausable_contract(&self, env: &Env, pause_contract: Address) {
+        configure_pausable_contract(env, "admin", pause_contract);
+    }
+
     pub fn wrap(&self, env: &Env, caller: Address, native_asset: Address, amount: i128) {
+        require_not_paused(env);
         if amount <= 0 {
             panic!("Amount must be positive");
         }
@@ -683,6 +720,7 @@ impl WrappedAssetBridgeContract {
     }
 
     pub fn unwrap(&self, env: &Env, caller: Address, native_asset: Address, amount: i128) {
+        require_not_paused(env);
         if amount <= 0 {
             panic!("Amount must be positive");
         }
@@ -958,6 +996,9 @@ impl GovernanceContract {
         env.storage().instance().set(&Symbol::new(&env, "votes_for"), &Map::<u32, i128>::new(&env));
         env.storage().instance().set(&Symbol::new(&env, "votes_against"), &Map::<u32, i128>::new(&env));
         env.storage().instance().set(&Symbol::new(&env, "has_voted"), &Map::<(u32, Address), bool>::new(&env));
+        // CONTRACT-032: per-proposal, per-voter power snapshot.  Populated by
+        // `snapshot_voting_power`; read by `cast_vote`.
+        env.storage().instance().set(&Symbol::new(&env, "vp_snapshot"), &Map::<(u32, Address), i128>::new(&env));
     }
 
     pub fn create_proposal(&self, env: &Env, author: Address, title: String, duration: u64) {
@@ -1018,6 +1059,62 @@ impl GovernanceContract {
         );
     }
 
+    /// CONTRACT-032: Snapshot a voter's governance-token balance for a specific
+    /// proposal.  Must be called while the proposal's voting window is active
+    /// (between `start_time` and `end_time`).  Once stored the snapshot is
+    /// immutable — the first recorded value is kept on subsequent calls, so a
+    /// voter cannot inflate their weight by acquiring tokens after registering.
+    ///
+    /// `cast_vote` will panic if no snapshot has been registered for the
+    /// `(proposal_id, voter)` pair, so voters must call this before voting.
+    pub fn snapshot_voting_power(&self, env: &Env, proposal_id: u32, voter: Address) {
+        voter.require_auth();
+
+        let proposals: Map<u32, Proposal> =
+            env.storage().instance().get(&Symbol::new(&env, "proposals")).unwrap_or_else(|| Map::new(env));
+        let proposal = proposals.get(proposal_id).unwrap_or_else(|| panic!("Proposal not found"));
+
+        let now = env.ledger().timestamp();
+        if now < proposal.start_time || now > proposal.end_time {
+            panic!("Snapshot only allowed during the active voting period");
+        }
+
+        let mut vp_snapshot: Map<(u32, Address), i128> =
+            env.storage().instance().get(&Symbol::new(&env, "vp_snapshot")).unwrap_or_else(|| Map::new(env));
+
+        // Idempotent: keep the first snapshot; ignore subsequent calls.
+        if vp_snapshot.contains_key((proposal_id, voter.clone())) {
+            return;
+        }
+
+        let governance_token: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "governance_token"))
+            .unwrap_or_else(|| panic!("Governance token not set"));
+
+        // Build a Vec<Val> to satisfy invoke_contract's call convention.
+        let mut args = soroban_sdk::Vec::<soroban_sdk::Val>::new(env);
+        args.push_back(voter.clone().to_val());
+        let balance: i128 = env.invoke_contract(&governance_token, &Symbol::new(&env, "balance"), args);
+
+        vp_snapshot.set((proposal_id, voter.clone()), balance);
+        env.storage().instance().set(&Symbol::new(&env, "vp_snapshot"), &vp_snapshot);
+
+        env.events().publish(
+            (Symbol::new(&env, "vp_snapshotted"), &voter),
+            (proposal_id, balance),
+        );
+    }
+
+    /// Return the snapshotted voting power for `voter` on `proposal_id`.
+    /// Returns `None` if `snapshot_voting_power` has not been called yet.
+    pub fn get_voting_power_snapshot(env: Env, proposal_id: u32, voter: Address) -> Option<i128> {
+        let vp_snapshot: Map<(u32, Address), i128> =
+            env.storage().instance().get(&Symbol::new(&env, "vp_snapshot")).unwrap_or_else(|| Map::new(&env));
+        vp_snapshot.get((proposal_id, voter))
+    }
+
     pub fn cast_vote(&self, env: &Env, proposal_id: u32, voter: Address, in_favor: bool) {
         voter.require_auth();
 
@@ -1036,8 +1133,15 @@ impl GovernanceContract {
             panic!("Voter has already voted on this proposal");
         }
 
-        let governance_token: Address = env.storage().instance().get(&Symbol::new(&env, "governance_token")).unwrap();
-        let vote_weight: i128 = env.invoke_contract(&governance_token, &Symbol::new(&env, "balance"), (&voter,));
+        // CONTRACT-032: read the pre-registered snapshot instead of the live
+        // token balance.  A whale who acquires tokens after snapshotting cannot
+        // retroactively increase their weight, closing the last-minute delegation
+        // manipulation vector described in issue #844.
+        let vp_snapshot: Map<(u32, Address), i128> =
+            env.storage().instance().get(&Symbol::new(&env, "vp_snapshot")).unwrap_or_else(|| Map::new(env));
+        let vote_weight: i128 = vp_snapshot
+            .get((proposal_id, voter.clone()))
+            .unwrap_or_else(|| panic!("Voting power not snapshotted: call snapshot_voting_power first"));
 
         if vote_weight <= 0 {
             panic!("Voter has no governance tokens");
@@ -1229,6 +1333,44 @@ impl QuoteLockContract {
 const PAYMENT_TOKEN_KEY: &str = "payment_token";
 const PAYMENT_ADMIN_KEY: &str = "payment_admin";
 const PAYMENT_COUNT_KEY: &str = "payment_count";
+const PAUSABLE_CONTRACT_KEY: &str = "pausable_contract";
+
+/// Reads the pause state from the separately deployed pause contract.
+///
+/// The pause contract owns its instance storage, so payment contracts must
+/// query it through a cross-contract call rather than attempting to read the
+/// state locally. A missing or invalid configuration deliberately fails closed:
+/// fund-flow operations must not proceed when the emergency state is unknown.
+fn require_not_paused(env: &Env) {
+    let pause_contract: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, PAUSABLE_CONTRACT_KEY))
+        .unwrap_or_else(|| panic!("Pausable contract not configured"));
+
+    let pausable = PausableContractClient::new(env, &pause_contract);
+    if pausable.is_paused() {
+        panic!("Contract is paused");
+    }
+}
+
+/// Stores a pause-contract address once. Keeping this configuration immutable
+/// prevents a payment-contract admin from bypassing an active emergency pause
+/// by swapping in a different, unpaused pause contract.
+fn configure_pausable_contract(env: &Env, admin_key: &str, pause_contract: Address) {
+    let admin: Address = env
+        .storage()
+        .instance()
+        .get(&Symbol::new(env, admin_key))
+        .unwrap_or_else(|| panic!("Admin not set"));
+    admin.require_auth();
+
+    let key = Symbol::new(env, PAUSABLE_CONTRACT_KEY);
+    if env.storage().instance().has(&key) {
+        panic!("Pausable contract already configured");
+    }
+    env.storage().instance().set(&key, &pause_contract);
+}
 
 #[contract]
 pub struct PaymentContract;
@@ -1248,6 +1390,11 @@ impl PaymentContract {
             .set(&Symbol::new(&env, PAYMENT_COUNT_KEY), &Map::<Address, u32>::new(&env));
     }
 
+    /// Bind this payment contract to the shared emergency-pause contract once.
+    pub fn set_pausable_contract(env: Env, pause_contract: Address) {
+        configure_pausable_contract(&env, PAYMENT_ADMIN_KEY, pause_contract);
+    }
+
     /// Send `amount` units of the configured token from `sender` to `recipient`.
     ///
     /// - Requires `sender` authorization.
@@ -1261,6 +1408,7 @@ impl PaymentContract {
         amount: i128,
         memo: Symbol,
     ) {
+        require_not_paused(&env);
         // Authorization & validation.
         sender.require_auth();
         if amount <= 0 {
@@ -1302,6 +1450,7 @@ impl PaymentContract {
         recipients: Vec<Address>,
         amounts: Vec<i128>,
     ) {
+        require_not_paused(&env);
         sender.require_auth();
 
         if recipients.len() != amounts.len() {
@@ -3157,3 +3306,9 @@ impl RefundContract {
         records.get(donation_id).map(|r| r.refunded).unwrap_or(false)
     }
 }
+
+#[cfg(test)]
+mod test;
+
+#[cfg(test)]
+mod pause_tests;

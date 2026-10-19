@@ -35,6 +35,29 @@ import { Sep24WebhookGuard } from './sep24-webhook.guard'
  *    Webhook-signature callback — requires Webhook-Id and Webhook-Signature
  *    headers. Sep24WebhookGuard verifies the signature before the handler runs.
  */
+export type MappedAnchorStatus = 'pending' | 'success' | 'failed' | 'refunded';
+
+/**
+ * Maps incoming anchor status to canonical application status.
+ * Handles 'refunded' so deposits/transactions are not stuck in pending.
+ */
+export function mapAnchorStatus(status?: string): MappedAnchorStatus {
+  if (!status) return 'pending';
+  const s = status.toLowerCase();
+  if (s === 'completed') return 'success';
+  if (s === 'refunded') return 'refunded';
+  if (
+    s === 'error' ||
+    s === 'expired' ||
+    s === 'no_market' ||
+    s === 'too_small' ||
+    s === 'too_large'
+  ) {
+    return 'failed';
+  }
+  return 'pending';
+}
+
 @ApiTags('sep24')
 @Controller('sep24')
 export class Sep24CallbackController {
@@ -55,9 +78,12 @@ export class Sep24CallbackController {
   async callback(
     @Param('token') token: string,
     @Body() payload: Record<string, any>,
-  ): Promise<{ ok: true }> {
-    await this.sep24Service.handleCallback(token, payload)
-    return { ok: true }
+  ): Promise<{ ok: true; mappedStatus: MappedAnchorStatus }> {
+    const rawStatus = payload?.status ?? payload?.transaction?.status;
+    const mapped = mapAnchorStatus(rawStatus);
+
+    await this.sep24Service.handleCallback(token, payload);
+    return { ok: true, mappedStatus: mapped };
   }
 
   // ── Webhook-signature callback (Issue #590) ───────────────────────────────

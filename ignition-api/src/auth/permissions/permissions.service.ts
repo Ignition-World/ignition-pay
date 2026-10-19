@@ -27,6 +27,34 @@ export class PermissionsService {
     return this.getUserPermissions(role).includes(permission);
   }
 
+  /**
+   * Invalidate the in-memory role-permissions cache (Issue #807).
+   * If a specific role is passed, only that role's cache is purged.
+   * If omitted, clears the entire cache so updated route permissions take effect
+   * immediately without requiring a full redeploy.
+   */
+  invalidateCache(role?: string): void {
+    if (role) {
+      this.rolePermissionsCache.delete(role);
+    } else {
+      this.rolePermissionsCache.clear();
+    }
+  }
+
+  /**
+   * Clear the entire permissions cache.
+   */
+  clearCache(): void {
+    this.rolePermissionsCache.clear();
+  }
+
+  /**
+   * Override or dynamically set permissions for a given role in memory.
+   */
+  setRolePermissions(role: string, permissions: Permission[]): void {
+    this.rolePermissionsCache.set(role, Object.freeze([...permissions]));
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // Issue #230 — JWT scope claim
   //

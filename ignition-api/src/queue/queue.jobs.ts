@@ -1,16 +1,29 @@
 export const EMAIL_JOB_SEND_VERIFICATION = 'send-verification';
 export const EMAIL_JOB_SEND_NOTIFICATION = 'send-notification';
+export const EMAIL_JOB_SEND_EMAIL = 'send_email';
 
 export interface SendVerificationEmailPayload {
   to: string;
   token: string;
   userId: string;
+  from?: string;
 }
 
 export interface SendNotificationEmailPayload {
   to: string;
   subject: string;
   body: string;
+  from?: string;
+}
+
+export interface SendEmailPayload {
+  to: string;
+  subject: string;
+  body?: string;
+  text?: string;
+  html?: string;
+  from?: string;
+  template?: string;
 }
 
 export const CONTRACT_EVENT_JOB_PROCESS = 'process';
@@ -40,6 +53,8 @@ export interface PaymentJobPayload {
   recipientAddress: string;
   amount: string;
   assetCode: string;
+  memo?: string;
+  memoType?: string;
 }
 // ---------------------------------------------------------------------------
 // Horizon polling worker — Issue #243

@@ -58,6 +58,47 @@ fn test_authorization() {
 }
 
 #[test]
+fn test_revoke_emits_event_only_when_authorization_is_removed() {
+    let env = Env::default();
+    let admin = Address::random(&env);
+    let user = Address::random(&env);
+    let contract_id = env.register_contract(None, IgnitionPayContract);
+    let contract = IgnitionPayContractClient::new(&env, &contract_id);
+
+    contract.initialize(&admin);
+    contract.set_kyc_status(&user, &true);
+    contract.authorize(&user);
+    contract.revoke(&user);
+
+    let events = env.events().all();
+    let revoked_topic = Symbol::new(&env, "authorization_revoked");
+    let revoked_events: soroban_sdk::Vec<_> = events
+        .iter()
+        .filter(|(event_contract, topics, data)| {
+            if event_contract != &contract_id {
+                return false;
+            }
+
+            let topics: Vec<soroban_sdk::Val> = Vec::from_val(&env, topics);
+            if topics.len() != 2 {
+                return false;
+            }
+
+            let topic: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+            let event_admin: Address = topics.get(1).unwrap().try_into_val(&env).unwrap();
+            let event_user: Address = data.clone().try_into_val(&env).unwrap();
+            topic == revoked_topic && event_admin == admin && event_user == user
+        })
+        .collect();
+
+    assert_eq!(revoked_events.len(), 1);
+
+    contract.revoke(&user);
+    let events_after_noop_revoke = env.events().all();
+    assert_eq!(events_after_noop_revoke.len(), events.len());
+}
+
+#[test]
 #[should_panic(expected = "KYC not completed")]
 fn test_authorize_kyc_not_completed() {
     let env = Env::default();
@@ -107,6 +148,14 @@ fn test_version() {
     let contract = create_contract(&env);
 
     contract.initialize(&admin);
+    assert_eq!(contract.version().to_string(), "0.1.0");
+}
+
+#[test]
+fn test_version_falls_back_when_storage_is_unseeded() {
+    let env = Env::default();
+    let contract = create_contract(&env);
+
     assert_eq!(contract.version().to_string(), "0.1.0");
 }
 
@@ -851,6 +900,7 @@ fn test_price_feed_rejects_zero_max_deviation() {
     feed_contract.set_max_deviation_bps(&0);
 }
 
+<<<<<<< HEAD
 fn create_dispute_escrow_contract(env: &Env, token: &Address) -> DisputeEscrowContractClient {
     let admin = Address::random(env);
     let contract =
@@ -927,4 +977,206 @@ fn test_dispute_escrow_rejects_nonpositive_deposit_amounts() {
     assert!(escrow.try_deposit(&1, &depositor, &0).is_err());
     assert!(escrow.try_deposit(&1, &depositor, &-1).is_err());
     assert!(escrow.try_is_frozen(&1).is_err());
+=======
+// ─── CONTRACT-032: Voting Power Snapshot Tests ───────────────────────────────
+//
+// These tests cover the fix for issue #844 / CONTRACT-032.
+// Before this fix, `cast_vote` read the live token balance, which allowed a
+// voter to acquire tokens after a proposal opened and manipulate their weight.
+// The fix introduces `snapshot_voting_power` which locks in the balance at
+// snapshot time; `cast_vote` uses that stored value instead.
+
+/// A minimal governance token mock that stores per-address balances so tests
+/// can set up arbitrary amounts and verify the snapshot reads them correctly.
+mod mock_governance_token {
+    use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, Map, Symbol};
+
+    #[contract]
+    pub struct MockGovernanceToken;
+
+    #[contractimpl]
+    impl MockGovernanceToken {
+        /// Set the balance for an address (test helper — not a real token fn).
+        pub fn set_balance(env: Env, account: Address, amount: i128) {
+            let mut balances: Map<Address, i128> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("bals"))
+                .unwrap_or_else(|| Map::new(&env));
+            balances.set(account, amount);
+            env.storage().instance().set(&symbol_short!("bals"), &balances);
+        }
+
+        /// Standard Soroban token-style balance function, invoked by
+        /// GovernanceContract::snapshot_voting_power via env.invoke_contract.
+        pub fn balance(env: Env, account: Address) -> i128 {
+            let balances: Map<Address, i128> = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("bals"))
+                .unwrap_or_else(|| Map::new(&env));
+            balances.get(account).unwrap_or(0)
+        }
+    }
+}
+
+/// Helper that sets up a GovernanceContract + mock governance token and
+/// returns (governance client, token address).  The ledger timestamp starts
+/// at 0, so proposals begin at `start_time = 0` and end at `duration`.
+fn create_governance_with_token(
+    env: &Env,
+) -> (
+    GovernanceContractClient,
+    Address,
+    Address, // token contract address so callers can set balances
+) {
+    use soroban_sdk::testutils::Address as _;
+    let admin = Address::random(env);
+    let token_addr = env.register_contract(None, mock_governance_token::MockGovernanceToken);
+    let gov = GovernanceContractClient::new(env, &env.register_contract(None, crate::GovernanceContract));
+    gov.initialize(&admin, &token_addr);
+    (gov, admin, token_addr)
+}
+
+/// Convenience: mint tokens to an account via the mock token contract.
+fn set_token_balance(env: &Env, token: &Address, account: &Address, amount: i128) {
+    use mock_governance_token::MockGovernanceTokenClient;
+    let client = MockGovernanceTokenClient::new(env, token);
+    client.set_balance(account, &amount);
+}
+
+// ─── Test 1: snapshot stores the token balance at time of call ────────────────
+
+#[test]
+fn test_snapshot_stores_token_balance() {
+    use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let (gov, _admin, token) = create_governance_with_token(&env);
+
+    let voter = Address::random(&env);
+    set_token_balance(&env, &token, &voter, 500);
+
+    // Create proposal with duration 1000; start_time = 0, end_time = 1000.
+    let title = soroban_sdk::String::from_str(&env, "Snapshot test proposal");
+    gov.create_proposal(&voter, &title, &1000);
+
+    // Advance ledger to t=1 (inside voting window).
+    env.ledger().set(LedgerInfo { timestamp: 1, ..env.ledger().get() });
+
+    gov.snapshot_voting_power(&1, &voter);
+
+    let stored = gov.get_voting_power_snapshot(&1, &voter);
+    assert_eq!(stored, Some(500_i128), "snapshot should capture 500 tokens");
+}
+
+// ─── Test 2: snapshot is idempotent ─────────────────────────────────────────
+
+#[test]
+fn test_snapshot_is_idempotent() {
+    use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let (gov, _admin, token) = create_governance_with_token(&env);
+
+    let voter = Address::random(&env);
+    set_token_balance(&env, &token, &voter, 300);
+
+    let title = soroban_sdk::String::from_str(&env, "Idempotent snapshot proposal");
+    gov.create_proposal(&voter, &title, &1000);
+
+    // First snapshot at 300 tokens.
+    env.ledger().set(LedgerInfo { timestamp: 1, ..env.ledger().get() });
+    gov.snapshot_voting_power(&1, &voter);
+
+    // Voter acquires more tokens; second snapshot should be silently ignored.
+    set_token_balance(&env, &token, &voter, 9999);
+    gov.snapshot_voting_power(&1, &voter);
+
+    // Value must still be the original 300.
+    let stored = gov.get_voting_power_snapshot(&1, &voter);
+    assert_eq!(stored, Some(300_i128), "second snapshot must not overwrite the first");
+}
+
+// ─── Test 3: cast_vote uses snapshot weight, not live balance ─────────────────
+
+#[test]
+fn test_cast_vote_uses_snapshot_weight() {
+    use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let (gov, _admin, token) = create_governance_with_token(&env);
+
+    let voter = Address::random(&env);
+    set_token_balance(&env, &token, &voter, 200);
+
+    let title = soroban_sdk::String::from_str(&env, "Vote weight proposal");
+    gov.create_proposal(&voter, &title, &1000);
+
+    // Snapshot at 200 tokens.
+    env.ledger().set(LedgerInfo { timestamp: 1, ..env.ledger().get() });
+    gov.snapshot_voting_power(&1, &voter);
+
+    // Voter acquires a LOT more tokens after the snapshot.
+    set_token_balance(&env, &token, &voter, 100_000);
+
+    // Cast a vote; the tally must reflect the snapshotted 200, not 100 000.
+    gov.cast_vote(&1, &voter, &true);
+
+    let (votes_for, votes_against) = gov.get_vote_tally(&1);
+    assert_eq!(votes_for, 200, "votes_for should equal the snapshot weight (200)");
+    assert_eq!(votes_against, 0);
+}
+
+// ─── Test 4: cast_vote panics if no snapshot was taken ────────────────────────
+
+#[test]
+#[should_panic(expected = "Voting power not snapshotted")]
+fn test_cast_vote_panics_without_snapshot() {
+    use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let (gov, _admin, token) = create_governance_with_token(&env);
+
+    let voter = Address::random(&env);
+    set_token_balance(&env, &token, &voter, 100);
+
+    let title = soroban_sdk::String::from_str(&env, "No snapshot proposal");
+    gov.create_proposal(&voter, &title, &1000);
+
+    // Move time into voting window but do NOT call snapshot_voting_power.
+    env.ledger().set(LedgerInfo { timestamp: 1, ..env.ledger().get() });
+
+    // This must panic because no snapshot was registered.
+    gov.cast_vote(&1, &voter, &true);
+}
+
+// ─── Test 5: snapshot panics outside the voting window ────────────────────────
+
+#[test]
+#[should_panic(expected = "Snapshot only allowed during the active voting period")]
+fn test_snapshot_panics_after_voting_window() {
+    use soroban_sdk::testutils::{Address as _, Ledger, LedgerInfo};
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let (gov, _admin, token) = create_governance_with_token(&env);
+
+    let voter = Address::random(&env);
+    set_token_balance(&env, &token, &voter, 100);
+
+    // Create proposal with duration 500 → window [0, 500].
+    let title = soroban_sdk::String::from_str(&env, "Window test proposal");
+    gov.create_proposal(&voter, &title, &500);
+
+    // Advance time PAST the end of the voting window.
+    env.ledger().set(LedgerInfo { timestamp: 501, ..env.ledger().get() });
+
+    // Must panic — window is closed.
+    gov.snapshot_voting_power(&1, &voter);
+>>>>>>> 183d24f5042bb4510cc295ca9e2163fd20251e10
 }

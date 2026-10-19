@@ -73,102 +73,118 @@ export class BalanceReconciliationService {
   }
 
   async reconcileWallet(wallet: Wallet): Promise<boolean> {
-    const accountData = await this.horizonServer
-      .loadAccount(wallet.stellarAddress)
-      .catch((err) => {
-        if (err?.response?.status === 404) {
-          return null;
-        }
-        throw err;
-      });
-
-    const nativeAsset = accountData?.balances.find(
-      (b) => b.asset_type === 'native',
-    );
-    const onChainBalance = new BigNumber(
-      nativeAsset ? nativeAsset.balance : '0.0000000',
-    );
-    const dbBalance = new BigNumber(wallet.balance.toString());
-
-    const driftAmount = dbBalance.minus(onChainBalance).abs();
-    const DRIFT_THRESHOLD = new BigNumber('0.00001');
-
-    if (driftAmount.isGreaterThan(DRIFT_THRESHOLD)) {
-      this.logger.warn(
-        `Balance drift detected for Wallet ${wallet.id}! DB: ${dbBalance.toFixed(7)}, On-Chain: ${onChainBalance.toFixed(7)}`,
-      );
-
-      // Persist the discrepancy and capture the resulting record id
-      let discrepancyRecord: { id: string } | null = null;
-
-      await this.prisma.$transaction(async (tx) => {
-        const existing = await tx.balanceDiscrepancy.findFirst({
-          where: {
-            walletId: wallet.id,
-            status: ReconciliationStatus.PENDING,
-          },
+    try {
+      const accountData = await this.horizonServer
+        .loadAccount(wallet.stellarAddress)
+        .catch((err) => {
+          if (err?.response?.status === 404) {
+            return null;
+          }
+          this.logger.warn(
+            `Unable to fetch on-chain account for wallet ${wallet.id} (${wallet.stellarAddress}): ${err?.message || err}. Skipping row without aborting batch.`,
+          );
+          return undefined;
         });
 
-        if (existing) {
-          const updated = await tx.balanceDiscrepancy.update({
-            where: { id: existing.id },
-            data: {
-              dbBalance: dbBalance.toFixed(7),
-              onChainBalance: onChainBalance.toFixed(7),
-              driftAmount: driftAmount.toFixed(7),
-            },
-          });
-          discrepancyRecord = { id: updated.id } as any;
-        } else {
-          const created = await tx.balanceDiscrepancy.create({
-            data: {
+      if (accountData === undefined) {
+        // Horizon lookup failed with an error; do not abort the nightly run, skip this wallet
+        return false;
+      }
+
+      const nativeAsset = accountData?.balances.find(
+        (b) => b.asset_type === 'native',
+      );
+      const onChainBalance = new BigNumber(
+        nativeAsset ? nativeAsset.balance : '0.0000000',
+      );
+      const dbBalance = new BigNumber(wallet.balance.toString());
+
+      const driftAmount = dbBalance.minus(onChainBalance).abs();
+      const DRIFT_THRESHOLD = new BigNumber('0.00001');
+
+      if (driftAmount.isGreaterThan(DRIFT_THRESHOLD)) {
+        this.logger.warn(
+          `Balance drift detected for Wallet ${wallet.id}! DB: ${dbBalance.toFixed(7)}, On-Chain: ${onChainBalance.toFixed(7)}`,
+        );
+
+        // Persist the discrepancy and capture the resulting record id
+        let discrepancyRecord: { id: string } | null = null;
+
+        await this.prisma.$transaction(async (tx) => {
+          const existing = await tx.balanceDiscrepancy.findFirst({
+            where: {
               walletId: wallet.id,
-              stellarAddress: wallet.stellarAddress,
-              dbBalance: dbBalance.toFixed(7),
-              onChainBalance: onChainBalance.toFixed(7),
-              driftAmount: driftAmount.toFixed(7),
               status: ReconciliationStatus.PENDING,
             },
           });
-          discrepancyRecord = { id: created.id } as any;
+
+          if (existing) {
+            const updated = await tx.balanceDiscrepancy.update({
+              where: { id: existing.id },
+              data: {
+                dbBalance: dbBalance.toFixed(7),
+                onChainBalance: onChainBalance.toFixed(7),
+                driftAmount: driftAmount.toFixed(7),
+              },
+            });
+            discrepancyRecord = { id: updated.id } as any;
+          } else {
+            const created = await tx.balanceDiscrepancy.create({
+              data: {
+                walletId: wallet.id,
+                stellarAddress: wallet.stellarAddress,
+                dbBalance: dbBalance.toFixed(7),
+                onChainBalance: onChainBalance.toFixed(7),
+                driftAmount: driftAmount.toFixed(7),
+                status: ReconciliationStatus.PENDING,
+              },
+            });
+            discrepancyRecord = { id: created.id } as any;
+          }
+        });
+
+        // Alert configured recipients (if any)
+        try {
+          const raw = this.config.get<string>('ALERT_EMAILS') || '';
+          const recipients = raw
+            .split(',')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+
+          if (recipients.length === 0) {
+            this.logger.warn('No ALERT_EMAILS configured — discrepancy not emailed');
+          } else {
+            const subject = `Balance discrepancy detected for wallet ${wallet.id}`;
+            const body = `A balance discrepancy was detected for wallet ${wallet.id} (address ${wallet.stellarAddress}).\n\nDB balance: ${dbBalance.toFixed(7)}\nOn-chain balance: ${onChainBalance.toFixed(7)}\nDrift: ${driftAmount.toFixed(7)}\nDiscrepancy id: ${discrepancyRecord?.id ?? 'unknown'}`;
+
+            await Promise.all(
+              recipients.map((to) =>
+                this.emailQueue.add(EMAIL_JOB_SEND_NOTIFICATION, {
+                  to,
+                  subject,
+                  body,
+                }),
+              ),
+            );
+
+            this.logger.log(
+              `Queued alert emails to ${recipients.length} recipient(s) for discrepancy ${discrepancyRecord?.id}`,
+            );
+          }
+        } catch (err) {
+          this.logger.error('Failed to enqueue discrepancy alert emails:', err?.stack || err);
         }
-      });
 
-      // Alert configured recipients (if any)
-      try {
-        const raw = this.config.get<string>('ALERT_EMAILS') || '';
-        const recipients = raw
-          .split(',')
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
-
-        if (recipients.length === 0) {
-          this.logger.warn('No ALERT_EMAILS configured — discrepancy not emailed');
-        } else {
-          const subject = `Balance discrepancy detected for wallet ${wallet.id}`;
-          const body = `A balance discrepancy was detected for wallet ${wallet.id} (address ${wallet.stellarAddress}).\n\nDB balance: ${dbBalance.toFixed(7)}\nOn-chain balance: ${onChainBalance.toFixed(7)}\nDrift: ${driftAmount.toFixed(7)}\nDiscrepancy id: ${discrepancyRecord?.id ?? 'unknown'}`;
-
-          await Promise.all(
-            recipients.map((to) =>
-              this.emailQueue.add(EMAIL_JOB_SEND_NOTIFICATION, {
-                to,
-                subject,
-                body,
-              }),
-            ),
-          );
-
-          this.logger.log(
-            `Queued alert emails to ${recipients.length} recipient(s) for discrepancy ${discrepancyRecord?.id}`,
-          );
-        }
-      } catch (err) {
-        this.logger.error('Failed to enqueue discrepancy alert emails:', err?.stack || err);
+        return true;
       }
 
-      return true;
+      return false;
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to reconcile individual wallet row ${wallet.id} (${wallet.stellarAddress}): ${error?.message || error}. Continuing batch.`,
+        error?.stack,
+      );
+      return false;
     }
-
-    return false;
   }
 }

@@ -175,24 +175,25 @@ export class AddressesService {
     });
 
     if (reusable) {
-      // Transition back to ALLOCATED and refresh allocatedAt.
-      const reallocated = await this.prisma.depositAddress.update({
-        where: { id: reusable.id },
-        data: {
-          status: 'ALLOCATED',
-          allocatedAt: new Date(),
-          label: label ?? reusable.label,
-        },
-      });
-
-      // Mirror allocation timestamp on the canonical Address row if present.
-      await this.prisma.address.updateMany({
-        where: { address: reallocated.address },
-        data: {
-          allocatedAt: reallocated.allocatedAt,
-          lastActivityAt: new Date(),
-        },
-      });
+      const now = new Date();
+      // Transition back to ALLOCATED and refresh allocatedAt atomically with Address row.
+      const [reallocated] = await this.prisma.$transaction([
+        this.prisma.depositAddress.update({
+          where: { id: reusable.id },
+          data: {
+            status: 'ALLOCATED',
+            allocatedAt: now,
+            label: label ?? reusable.label,
+          },
+        }),
+        this.prisma.address.updateMany({
+          where: { address: reusable.address },
+          data: {
+            allocatedAt: now,
+            lastActivityAt: now,
+          },
+        }),
+      ]);
 
       return {
         id: reallocated.id,
@@ -223,34 +224,34 @@ export class AddressesService {
 
     const now = new Date();
 
-    const depositAddress = await this.prisma.depositAddress.create({
-      data: {
-        address,
-        walletId,
-        network,
-        label: label ?? null,
-        status: 'ALLOCATED',
-        allocatedAt: now,
-      },
-    });
-
-    // Keep the Address table in sync: create a canonical row if it doesn't
-    // exist yet so allocatedAt/lastActivityAt are tracked in one place.
-    await this.prisma.address.upsert({
-      where: { address },
-      create: {
-        address,
-        network,
-        walletId,
-        allocatedAt: now,
-        lastActivityAt: now,
-      },
-      update: {
-        walletId,
-        allocatedAt: now,
-        lastActivityAt: now,
-      },
-    });
+    // Atomically create deposit address and upsert canonical Address record.
+    const [depositAddress] = await this.prisma.$transaction([
+      this.prisma.depositAddress.create({
+        data: {
+          address,
+          walletId,
+          network,
+          label: label ?? null,
+          status: 'ALLOCATED',
+          allocatedAt: now,
+        },
+      }),
+      this.prisma.address.upsert({
+        where: { address },
+        create: {
+          address,
+          network,
+          walletId,
+          allocatedAt: now,
+          lastActivityAt: now,
+        },
+        update: {
+          walletId,
+          allocatedAt: now,
+          lastActivityAt: now,
+        },
+      }),
+    ]);
 
     return {
       id: depositAddress.id,
@@ -317,16 +318,16 @@ export class AddressesService {
       throw new NotFoundException('Deposit address not found');
     }
 
-    await this.prisma.depositAddress.update({
-      where: { id: depositAddressId },
-      data: { status: 'AVAILABLE' },
-    });
-
-    // Reflect the release in the Address table so lastActivityAt is current.
-    await this.prisma.address.updateMany({
-      where: { address: existing.address },
-      data: { lastActivityAt: new Date() },
-    });
+    await this.prisma.$transaction([
+      this.prisma.depositAddress.update({
+        where: { id: depositAddressId },
+        data: { status: 'AVAILABLE' },
+      }),
+      this.prisma.address.updateMany({
+        where: { address: existing.address },
+        data: { lastActivityAt: new Date() },
+      }),
+    ]);
   }
 
   /**

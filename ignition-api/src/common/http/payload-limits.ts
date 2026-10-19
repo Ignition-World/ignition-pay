@@ -54,9 +54,8 @@ export const BODY_SIZE_LIMIT_METADATA_KEY = 'http_body_size_limit';
 /**
  * Convert an express-style byte string into a byte count.
  *
- * Accepts `1048576`, `'1048576'`, `'1mb'`, `'2 MB'`, `'500kb'`, `'10b'`.
- * Returns `undefined` when the value is missing or cannot be parsed, so
- * callers can tell "not configured" apart from "zero".
+ * Accepts positive limits such as `1048576`, `'1048576'`, `'1mb'`, `'2 MB'`, `'500kb'`, `'10b'`.
+ * Returns `undefined` when the value is missing, zero, negative, or cannot be parsed.
  */
 export function parseByteLimit(
   value: string | number | undefined | null,
@@ -70,19 +69,20 @@ export function parseByteLimit(
   if (!match) return undefined;
 
   const amount = Number.parseFloat(match[1]);
-  if (!Number.isFinite(amount) || amount < 0) return undefined;
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
 
   const multiplier = match[2] ? BYTE_UNITS[match[2].toLowerCase()] : 1;
-  return Math.floor(amount * multiplier);
+  const total = Math.floor(amount * multiplier);
+  return total > 0 ? total : undefined;
 }
 
 /**
  * Read a body-size override from the environment.
  *
- * Throws when `envVar` holds a value express would not be able to parse — a
- * typo in the environment should fail the start-up (main.ts calls this once at
- * boot for exactly that reason), not silently disable or wildly mis-size the
- * body limit.
+ * Throws when `envVar` holds a value express would not be able to parse or is
+ * negative or zero — a typo in the environment should fail the start-up
+ * (main.ts calls this once at boot for exactly that reason), not silently
+ * disable or wildly mis-size the body limit.
  *
  * @returns the raw string (so express does its own normalisation) or
  *          `undefined` when the variable is unset and the caller's default
@@ -92,10 +92,11 @@ export function byteLimitEnvValue(envVar: string): string | undefined {
   const raw = process.env[envVar];
   if (raw === undefined || raw.trim() === '') return undefined;
 
-  if (parseByteLimit(raw) === undefined) {
+  const parsed = parseByteLimit(raw);
+  if (parsed === undefined || parsed <= 0) {
     throw new Error(
       `${envVar}="${raw}" is not a valid body size limit. ` +
-        `Use a byte count (1048576) or a suffixed value such as "1mb", "500kb" or "2MB".`,
+        `Use a positive byte count (1048576) or a suffixed value such as "1mb", "500kb" or "2MB".`,
     );
   }
 

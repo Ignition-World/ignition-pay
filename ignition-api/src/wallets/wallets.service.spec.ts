@@ -192,6 +192,32 @@ describe('WalletsService', () => {
       );
     });
 
+    it('emits wallet_created and user_registered analytics events', async () => {
+      const mockAnalytics = { track: jest.fn(), identify: jest.fn() };
+      const svc = new WalletsService(
+        new ConfigService(),
+        cache,
+        prisma as any,
+        walletLimitService as any,
+        mockAnalytics as any,
+      );
+
+      await svc.createWallet('user-uuid', {});
+
+      expect(mockAnalytics.track).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'wallet_created',
+          userId: 'user-uuid',
+        }),
+      );
+      expect(mockAnalytics.track).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'user_registered',
+          userId: 'user-uuid',
+        }),
+      );
+    });
+
     it('throws NotFoundException if user does not exist', async () => {
       const noPrisma = buildMockPrisma({ user: null });
       service = new WalletsService(

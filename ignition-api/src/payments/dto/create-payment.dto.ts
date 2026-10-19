@@ -51,4 +51,23 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsString()
   idempotencyKey?: string;
+
+  @ApiProperty({
+    description:
+      'Optional memo for the Stellar transaction. Text memos are constrained to at most 28 UTF-8 bytes.',
+    required: false,
+    example: 'invoice-123',
+  })
+  @IsOptional()
+  @IsString()
+  memo?: string;
+
+  @ApiProperty({
+    description: 'Optional Stellar memo type: text | id | hash | return',
+    required: false,
+    example: 'text',
+  })
+  @IsOptional()
+  @IsString()
+  memoType?: string;
 }
