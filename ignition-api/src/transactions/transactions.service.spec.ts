@@ -751,4 +751,32 @@ describe('TransactionsService.estimateFee', () => {
       feeType: 'standard',
     });
   });
+
+  it('defaults to descending donatedAt when sort param is omitted', async () => {
+    await service.getTransactions({ page: 1, limit: 10 });
+    expect(prisma.donation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { donatedAt: 'desc' } }),
+    );
+  });
+
+  it('sorts ascending when sort param has no leading dash', async () => {
+    await service.getTransactions({ page: 1, limit: 10, sort: 'donatedAt' });
+    expect(prisma.donation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { donatedAt: 'asc' } }),
+    );
+  });
+
+  it('sorts descending when sort param has a leading dash', async () => {
+    await service.getTransactions({ page: 1, limit: 10, sort: '-createdAt' });
+    expect(prisma.donation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { createdAt: 'desc' } }),
+    );
+  });
+
+  it('sorts ascending on createdAt when sort=createdAt', async () => {
+    await service.getTransactions({ page: 1, limit: 10, sort: 'createdAt' });
+    expect(prisma.donation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { createdAt: 'asc' } }),
+    );
+  });
 });

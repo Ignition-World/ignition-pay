@@ -28,6 +28,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { SessionModule } from './session/session.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { Sep38Module } from './sep38/sep38.module';
 import { ConfigValidationService } from './config/validation';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { SentryMiddleware } from './common/sentry/sentry.middleware';
