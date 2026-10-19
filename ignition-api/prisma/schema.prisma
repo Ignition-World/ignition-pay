@@ -429,3 +429,28 @@ model DepositAddress {
   @@index([network])
   @@map("deposit_addresses")
 }
+
+/// Sep38Quote model — stores RFQ quotes from the SEP-38 anchor flow.
+/// price uses Decimal(20,7) to preserve sub-cent precision (e.g. 0.00000000123)
+/// and avoid the lossy rounding that Float introduces at >8 decimal places.
+model Sep38Quote {
+  id              String   @id @default(uuid())
+  /// Stellar account of the requesting user
+  userId          String
+  /// Asset being sold (e.g. "USDC:GBBD...")
+  sellAsset       String
+  /// Asset being bought (e.g. "iso4217:USD")
+  buyAsset        String
+  /// Sell amount — stored as Decimal to match project monetary precision
+  sellAmount      Decimal  @db.Decimal(20, 7)
+  /// Quoted price per unit — Decimal(20,7) prevents lossy rounding at sub-cent precision
+  price           Decimal  @db.Decimal(20, 7)
+  /// ISO-8601 timestamp after which the quote is no longer valid
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sep38_quotes")
+}
