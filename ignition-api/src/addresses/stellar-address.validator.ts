@@ -1,4 +1,5 @@
 import { StrKey } from '@stellar/stellar-sdk';
+import { ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
 
 /**
  * Stellar STR address validator (Issue #421).
@@ -23,5 +24,17 @@ export function assertValidStellarAddress(address: string): void {
       `"${address}" is not a valid Stellar STR address. ` +
       'Must start with G and pass full StrKey validation.',
     );
+  }
+}
+
+/** class-validator constraint: the value must pass full StrKey (checksum) validation. */
+@ValidatorConstraint({ name: 'isStellarAddress', async: false })
+export class IsStellarAddressConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    return typeof value === 'string' && isValidStellarAddress(value);
+  }
+
+  defaultMessage(): string {
+    return 'address must be a valid Stellar address (checksum failed or malformed)';
   }
 }

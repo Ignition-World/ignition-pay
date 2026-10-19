@@ -4,13 +4,18 @@ import {
   IsEnum,
   IsBoolean,
   MaxLength,
+  Validate,
+  ValidateIf,
 } from 'class-validator';
+import { IsStellarAddressConstraint } from '../stellar-address.validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WalletNetwork } from '../../wallets/dto/create-wallet.dto';
 
 export class CreateAddressDto {
   @ApiProperty({ description: 'The deposit address string' })
   @IsString()
+  @ValidateIf((o: CreateAddressDto) => (o.network ?? WalletNetwork.STELLAR) === WalletNetwork.STELLAR)
+  @Validate(IsStellarAddressConstraint)
   address: string;
 
   @ApiProperty({ enum: WalletNetwork, default: WalletNetwork.STELLAR })
