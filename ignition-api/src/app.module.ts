@@ -19,6 +19,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { SessionModule } from './session/session.module';
 import { AddressesModule } from './addresses/addresses.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { ConfigValidationService } from './config/validation';
 
 @Module({
@@ -39,6 +40,7 @@ import { ConfigValidationService } from './config/validation';
     WalletsModule,
     TransactionsModule,
     AddressesModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [

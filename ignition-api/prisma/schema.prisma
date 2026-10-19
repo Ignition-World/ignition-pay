@@ -429,3 +429,27 @@ model DepositAddress {
   @@index([network])
   @@map("deposit_addresses")
 }
+
+/// AnalyticsEvent model — persists a single analytics event from the queue processor.
+/// sequenceNumber is a monotonically-increasing counter scoped per userId so that
+/// the processor can ORDER BY (userId, sequenceNumber) before flushing a batch to
+/// the warehouse, guaranteeing causal ordering (e.g. viewed_dashboard always arrives
+/// before sent_payment if it happened first).
+model AnalyticsEvent {
+  id             String   @id @default(uuid())
+  /// Stellar account or internal user ID that generated the event
+  userId         String
+  /// Event name — e.g. "viewed_dashboard", "sent_payment"
+  eventName      String
+  /// Arbitrary JSON payload attached to the event
+  payload        Json?
+  /// Monotonically increasing per-user sequence number.
+  /// Events in a batch MUST be flushed in ascending sequenceNumber order.
+  sequenceNumber Int
+  createdAt      DateTime @default(now())
+
+  @@index([userId, sequenceNumber])
+  @@index([userId])
+  @@index([eventName])
+  @@map("analytics_events")
+}
