@@ -2,14 +2,15 @@
 extern crate std;
 
 use crate::{
-    DelegationContract, DelegationContractClient, GovernanceContract, GovernanceContractClient,
+    DelegationContract, DelegationContractClient, DisputeEscrowContract,
+    DisputeEscrowContractClient, GovernanceContract, GovernanceContractClient,
     IgnitionPayContract, IgnitionPayContractClient, MultiOracleContract, MultiOracleContractClient,
     QuoteLockContract, QuoteLockContractClient, TokenMetadataContract, TokenMetadataContractClient,
     WrappedAssetBridgeContract, WrappedAssetBridgeContractClient,
 };
 use soroban_sdk::{
     testutils::{Address as _, Ledger, LedgerInfo},
-    Address, Env, String, Symbol, Vec,
+    token, Address, Env, String, Symbol, Vec,
 };
 
 fn create_contract(env: &Env) -> IgnitionPayContractClient {
@@ -510,6 +511,7 @@ fn test_governance_set_quorum_invalid() {
     contract.initialize(&admin, &token);
     env.mock_all_auths();
     contract.set_quorum(&10001);
+}
 // --- PriceFeedContract Tests ---
 
 fn create_price_feed_contract(env: &Env) -> crate::PriceFeedContractClient {
@@ -847,4 +849,82 @@ fn test_price_feed_rejects_zero_max_deviation() {
     feed_contract.initialize(&feed_admin);
 
     feed_contract.set_max_deviation_bps(&0);
+}
+
+fn create_dispute_escrow_contract(env: &Env, token: &Address) -> DisputeEscrowContractClient {
+    let admin = Address::random(env);
+    let contract =
+        DisputeEscrowContractClient::new(env, &env.register_contract(None, DisputeEscrowContract));
+    contract.initialize(&admin, token);
+    contract
+}
+
+#[test]
+fn test_dispute_escrow_deposit_transfers_tokens_before_recording() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::random(&env);
+    let depositor = Address::random(&env);
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
+    let token_client = token::Client::new(&env, &token_id);
+    let escrow = create_dispute_escrow_contract(&env, &token_id);
+    token_admin_client.mint(&depositor, &100);
+
+    escrow.deposit(&1, &depositor, &60);
+
+    assert_eq!(token_client.balance(&depositor), 40);
+    assert_eq!(token_client.balance(&escrow.address), 60);
+    assert!(!escrow.is_frozen(&1));
+}
+
+#[test]
+fn test_dispute_escrow_insufficient_balance_does_not_record_deposit() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::random(&env);
+    let depositor = Address::random(&env);
+    let token_id = env.register_stellar_asset_contract(token_admin);
+    let token_client = token::Client::new(&env, &token_id);
+    let escrow = create_dispute_escrow_contract(&env, &token_id);
+
+    assert!(escrow.try_deposit(&1, &depositor, &1).is_err());
+
+    assert_eq!(token_client.balance(&depositor), 0);
+    assert_eq!(token_client.balance(&escrow.address), 0);
+    assert!(escrow.try_is_frozen(&1).is_err());
+}
+
+#[test]
+fn test_dispute_escrow_deposit_requires_depositor_authorization() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::random(&env);
+    let depositor = Address::random(&env);
+    let token_id = env.register_stellar_asset_contract(token_admin.clone());
+    let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
+    let token_client = token::Client::new(&env, &token_id);
+    let escrow = create_dispute_escrow_contract(&env, &token_id);
+    token_admin_client.mint(&depositor, &100);
+    env.mock_auths(&[]);
+
+    assert!(escrow.try_deposit(&1, &depositor, &60).is_err());
+
+    assert_eq!(token_client.balance(&depositor), 100);
+    assert_eq!(token_client.balance(&escrow.address), 0);
+    assert!(escrow.try_is_frozen(&1).is_err());
+}
+
+#[test]
+fn test_dispute_escrow_rejects_nonpositive_deposit_amounts() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let token_admin = Address::random(&env);
+    let depositor = Address::random(&env);
+    let token_id = env.register_stellar_asset_contract(token_admin);
+    let escrow = create_dispute_escrow_contract(&env, &token_id);
+
+    assert!(escrow.try_deposit(&1, &depositor, &0).is_err());
+    assert!(escrow.try_deposit(&1, &depositor, &-1).is_err());
+    assert!(escrow.try_is_frozen(&1).is_err());
 }
