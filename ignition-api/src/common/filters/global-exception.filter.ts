@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ExceptionFilter,
   Catch,
   ArgumentsHost,
@@ -62,6 +63,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.logger.warn(
         `[${request.method} ${request.url}] ${status} - ${message}`,
       );
+      // Validation failures are not 5xx, but the stack and field path are needed
+      // in error dashboards to find the offending input.
+      if (exception instanceof BadRequestException) {
+        captureException(exception, {
+          route: request.route?.path || request.path,
+          method: request.method,
+          validation: JSON.stringify(exception.getResponse()),
+        });
+      }
     }
 
     response.status(status).json(errorPayload);

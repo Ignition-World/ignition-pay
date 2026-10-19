@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 
@@ -13,6 +13,19 @@ export interface SystemSettingsDto {
   addressGenerationThrottleSustainedBreachMinutes: number;
   addressGenerationThrottleUniqueIpsThreshold: number;
   addressGenerationThrottleAlertCooldownMinutes: number;
+}
+
+/** Upper bound for numeric settings; rejects absurd values before they are persisted. */
+export const MAX_SETTING_VALUE = 10_000_000;
+
+/** Throws if any value is not a boolean or a finite, non-negative number within bounds. */
+export function assertValidSettings(updates: Partial<SystemSettingsDto>): void {
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined || typeof value === 'boolean') continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > MAX_SETTING_VALUE) {
+      throw new BadRequestException(`Invalid value for setting "${key}"`);
+    }
+  }
 }
 
 @Injectable()
@@ -107,6 +120,7 @@ export class SettingsService {
    * Update system settings (admin only)
    */
   async updateSettings(updates: Partial<SystemSettingsDto>): Promise<SystemSettingsDto> {
+    assertValidSettings(updates);
     const currentSettings = await this.prisma.systemSettings.findFirst();
     
     if (!currentSettings) {
