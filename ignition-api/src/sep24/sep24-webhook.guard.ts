@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ConflictException,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -34,6 +35,11 @@ import { Sep24WebhookVerificationService } from './sep24-webhook-verification.se
 @Injectable()
 export class Sep24WebhookGuard implements CanActivate {
   private readonly logger = new Logger(Sep24WebhookGuard.name);
+
+  /** Verified deliveries seen recently, so an anchor retry is not processed twice. */
+  private static readonly seen = new Map<string, number>();
+  private static readonly SEEN_TTL_MS = 24 * 60 * 60 * 1000;
+  private static readonly SEEN_MAX = 10_000;
 
   constructor(
     private readonly webhookVerification: Sep24WebhookVerificationService,
@@ -100,6 +106,20 @@ export class Sep24WebhookGuard implements CanActivate {
       rawBody,
       { timestampSeconds: parsedTimestamp },
     );
+
+    // Duplicate deliveries (anchor retries) must not re-run the deposit flow.
+    const now = Date.now();
+    const key = `${anchorId}:${webhookId}`;
+    const seen = Sep24WebhookGuard.seen;
+    for (const [k, at] of seen) {
+      if (now - at > Sep24WebhookGuard.SEEN_TTL_MS || seen.size > Sep24WebhookGuard.SEEN_MAX) seen.delete(k);
+      else break; // insertion order: the rest are newer
+    }
+    if (seen.has(key)) {
+      this.logger.warn(`SEP-24 webhook [${anchorId}]: duplicate delivery ${webhookId} ignored`);
+      throw new ConflictException('Duplicate webhook delivery');
+    }
+    seen.set(key, now);
     return true;
   }
 }
