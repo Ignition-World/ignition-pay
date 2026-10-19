@@ -13,7 +13,7 @@ export class TransactionsService {
   async getTransactions(
     query: GetTransactionsQueryDto,
   ): Promise<GetTransactionsResponseDto> {
-    const { page, limit, dateFrom, dateTo, status, type } = query;
+    const { page, limit, dateFrom, dateTo, status, type, sort } = query;
     const skip = (page - 1) * limit;
 
     const where: Prisma.DonationWhereInput = {};
@@ -27,6 +27,13 @@ export class TransactionsService {
         ...(dateTo && { lte: new Date(dateTo) }),
       };
     }
+
+    // Parse the sort param: a leading '-' means descending, no prefix means ascending.
+    // Defaults to newest-first ('-donatedAt') when the param is omitted.
+    const sortParam = sort ?? '-donatedAt';
+    const isDescending = sortParam.startsWith('-');
+    const sortField = isDescending ? sortParam.slice(1) : sortParam;
+    const sortDirection: Prisma.SortOrder = isDescending ? 'desc' : 'asc';
 
     const [total, donations] = await Promise.all([
       this.prisma.donation.count({ where }),
@@ -44,7 +51,7 @@ export class TransactionsService {
           confirmedAt: true,
           createdAt: true,
         },
-        orderBy: { donatedAt: 'desc' },
+        orderBy: { [sortField]: sortDirection },
         skip,
         take: limit,
       }),

@@ -39,6 +39,16 @@ export class GetTransactionsQueryDto {
   @IsOptional()
   @IsString()
   type?: string;
+
+  /**
+   * Sort field with optional direction prefix.
+   * Prefix with '-' for descending order (e.g. '-createdAt').
+   * No prefix means ascending (e.g. 'createdAt').
+   * Defaults to '-donatedAt' (newest first).
+   */
+  @IsOptional()
+  @IsString()
+  sort?: string;
 }
 
 export class TransactionDto {
