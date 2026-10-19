@@ -54,6 +54,29 @@ describe('UpdateUserDto', () => {
     const errors = await validate(dto);
     expect(errors.find((e: any) => e.property === 'socialLinks')).toBeDefined();
   });
+
+  it('rejects future date_of_birth', async () => {
+    const dto = new UpdateUserDto();
+    dto.date_of_birth = '2080-01-01';
+    const errors = await validate(dto);
+    expect(errors.find((e: any) => e.property === 'date_of_birth')).toBeDefined();
+  });
+
+  it('rejects date_of_birth for users under 18', async () => {
+    const dto = new UpdateUserDto();
+    const futureDate = new Date();
+    futureDate.setFullYear(futureDate.getFullYear() - 10);
+    dto.date_of_birth = futureDate.toISOString();
+    const errors = await validate(dto);
+    expect(errors.find((e: any) => e.property === 'date_of_birth')).toBeDefined();
+  });
+
+  it('accepts valid date_of_birth for adult users', async () => {
+    const dto = new UpdateUserDto();
+    dto.date_of_birth = '1995-05-15';
+    const errors = await validate(dto);
+    expect(errors.find((e: any) => e.property === 'date_of_birth')).toBeUndefined();
+  });
 });
 
 describe('UpdateKYCStatusDto', () => {

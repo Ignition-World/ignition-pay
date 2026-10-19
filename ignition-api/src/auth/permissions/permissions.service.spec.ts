@@ -47,6 +47,48 @@ describe('PermissionsService', () => {
     });
   });
 
+  describe('invalidateCache (Issue #807)', () => {
+    it('invalidates cache for a specific role', () => {
+      // Warm cache
+      const initial = service.getUserPermissions(UserRole.USER);
+      expect(initial).toContain(Permission.WALLET_READ);
+
+      // Mutate cache via setRolePermissions
+      service.setRolePermissions(UserRole.USER, [Permission.ADMIN_USERS_KYC]);
+      expect(service.getUserPermissions(UserRole.USER)).toEqual([
+        Permission.ADMIN_USERS_KYC,
+      ]);
+
+      // Invalidate specific role - reloads defaults from ROLE_PERMISSIONS
+      service.invalidateCache(UserRole.USER);
+      const reloaded = service.getUserPermissions(UserRole.USER);
+      expect(reloaded).toContain(Permission.WALLET_READ);
+      expect(reloaded).not.toContain(Permission.ADMIN_USERS_KYC);
+    });
+
+    it('clears all cached roles when called without arguments', () => {
+      service.setRolePermissions(UserRole.USER, [Permission.ADMIN_USERS_KYC]);
+      service.setRolePermissions(UserRole.CREATOR, [Permission.ADMIN_USERS_ROLE]);
+
+      service.invalidateCache();
+
+      expect(service.getUserPermissions(UserRole.USER)).toContain(
+        Permission.WALLET_READ,
+      );
+      expect(service.getUserPermissions(UserRole.CREATOR)).toContain(
+        Permission.CAMPAIGN_CREATE,
+      );
+    });
+
+    it('clears cache via clearCache()', () => {
+      service.setRolePermissions(UserRole.USER, [Permission.ADMIN_USERS_KYC]);
+      service.clearCache();
+      expect(service.getUserPermissions(UserRole.USER)).toContain(
+        Permission.WALLET_READ,
+      );
+    });
+  });
+
   // ────────────────────────────────────────────────────────────────────────
   // Issue #230 — JWT scope-claim helpers
   // ────────────────────────────────────────────────────────────────────────

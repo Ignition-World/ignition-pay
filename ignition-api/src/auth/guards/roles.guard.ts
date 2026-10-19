@@ -22,8 +22,18 @@ export class RolesGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
-    if (!requiredRoles || requiredRoles.length === 0) {
+    if (!requiredRoles) {
       return true;
+    }
+
+    const rolesList = Array.isArray(requiredRoles)
+      ? requiredRoles.filter((r) => r !== undefined && r !== null)
+      : [];
+
+    if (rolesList.length === 0) {
+      throw new ForbiddenException(
+        'Forbidden resource: insufficient permissions',
+      );
     }
 
     const request = context.switchToHttp().getRequest();
@@ -52,7 +62,7 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('User not found');
     }
 
-    const hasRole = requiredRoles.includes(dbUser.role);
+    const hasRole = rolesList.includes(dbUser.role);
     if (!hasRole) {
       throw new ForbiddenException(
         'Forbidden resource: insufficient permissions',

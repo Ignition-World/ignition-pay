@@ -10,6 +10,9 @@ import {
   QUEUE_HORIZON,
   QUEUE_DASHBOARD,
   QUEUE_DATA_EXPORT,
+  DEFAULT_BACKOFF_SETTINGS,
+  EMAIL_QUEUE_SETTINGS,
+  CONTRACT_EVENTS_QUEUE_SETTINGS,
 } from './queue.constants';
 import { AnalyticsProcessor } from './processors/analytics.processor';
 import { ContractEventsProcessor } from './processors/contract-events.processor';
@@ -22,12 +25,7 @@ import { DataExportProcessor } from './processors/data-export.processor';
 import { DataExportModule } from '../users/data-export.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
-const DEAD_LETTER_SETTINGS = {
-  attempts: 3,
-  backoff: { type: 'exponential', delay: 5000 },
-  removeOnComplete: true,
-  removeOnFail: false,
-};
+const DEAD_LETTER_SETTINGS = DEFAULT_BACKOFF_SETTINGS;
 
 @Module({
   imports: [
@@ -53,8 +51,14 @@ const DEAD_LETTER_SETTINGS = {
       },
     }),
     BullModule.registerQueue(
-      { name: QUEUE_EMAIL },
-      { name: QUEUE_CONTRACT_EVENTS },
+      {
+        name: QUEUE_EMAIL,
+        defaultJobOptions: EMAIL_QUEUE_SETTINGS,
+      },
+      {
+        name: QUEUE_CONTRACT_EVENTS,
+        defaultJobOptions: CONTRACT_EVENTS_QUEUE_SETTINGS,
+      },
       { name: QUEUE_ANALYTICS },
       { name: QUEUE_PAYMENTS },
       { name: QUEUE_HORIZON },

@@ -45,6 +45,18 @@ describe('RolesGuard', () => {
     expect(res).toBe(true);
   });
 
+  it('should throw ForbiddenException if @Roles() is applied with no arguments', async () => {
+    reflector.getAllAndOverride.mockReturnValue([]);
+    const context = {
+      getHandler: () => {},
+      getClass: () => {},
+    } as unknown as ExecutionContext;
+
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      new ForbiddenException('Forbidden resource: insufficient permissions'),
+    );
+  });
+
   it('should throw ForbiddenException if user is not on request', async () => {
     reflector.getAllAndOverride.mockReturnValue([UserRole.ADMIN]);
     const context = {

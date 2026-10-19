@@ -74,6 +74,10 @@ export class PaymentsService {
       where: { depositAddress: dto.recipientAddress },
     });
 
+    const stellarMemo = dto.memo
+      ? this.buildStellarMemo(dto.memo, dto.memoType)
+      : null;
+
     const transaction = await this.prisma.transaction.create({
       data: {
         fromWalletId: dto.senderWalletId,
@@ -86,6 +90,9 @@ export class PaymentsService {
             ? {}
             : { externalRecipientAddress: dto.recipientAddress }),
           idempotencyKey: effectiveKey,
+          ...(stellarMemo
+            ? { memo: stellarMemo.value, memoType: stellarMemo.type }
+            : {}),
         },
       },
     });
@@ -97,11 +104,15 @@ export class PaymentsService {
       recipientAddress: dto.recipientAddress,
       amount: dto.amount,
       assetCode: dto.assetCode,
+      ...(stellarMemo
+        ? { memo: stellarMemo.value, memoType: stellarMemo.type }
+        : {}),
     } satisfies PaymentJobPayload);
 
     this.logger.log(
       `Payment queued: txn=${transaction.id} from=${dto.senderWalletId} ` +
-        `to=${dto.recipientAddress} amount=${dto.amount} ${dto.assetCode}`,
+        `to=${dto.recipientAddress} amount=${dto.amount} ${dto.assetCode}` +
+        (stellarMemo ? ` memo=${stellarMemo.value}` : ''),
     );
 
     // Issue #591 — a new transaction is a significant event: invalidate the
@@ -118,8 +129,68 @@ export class PaymentsService {
       recipientAddress: dto.recipientAddress,
       amount: dto.amount,
       assetCode: dto.assetCode,
+      ...(stellarMemo
+        ? { memo: stellarMemo.value, memoType: stellarMemo.type }
+        : {}),
       createdAt: transaction.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * Safely formats and clamps a Stellar memo to the protocol limits (Issue #808).
+   * Stellar protocol limits MEMO_TEXT to at most 28 UTF-8 bytes.
+   * If a non-ASCII input (e.g. accented characters, UTF-8 symbols, emojis) or base64 of a hash
+   * is within 28 characters, it could expand beyond 28 bytes in UTF-8, producing op_malformed on submit.
+   * This method ensures text memos are truncated by UTF-8 byte length (not character length).
+   */
+  buildStellarMemo(
+    memo?: string,
+    memoType: string = 'text',
+  ): { type: string; value: string } | null {
+    if (!memo) return null;
+
+    const normalizedType = memoType.toLowerCase();
+
+    if (normalizedType === 'hash' || normalizedType === 'return') {
+      const trimmed = memo.trim();
+      if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+        return { type: normalizedType, value: trimmed.toLowerCase() };
+      }
+      // Check if it's base64 of a 32-byte hash (44 chars)
+      try {
+        const buf = Buffer.from(trimmed, 'base64');
+        if (buf.length === 32) {
+          return { type: normalizedType, value: buf.toString('hex').toLowerCase() };
+        }
+      } catch {
+        // Fall back to text if base64 decode fails
+      }
+    }
+
+    if (normalizedType === 'id') {
+      const numeric = memo.replace(/\D/g, '');
+      return { type: 'id', value: numeric || '0' };
+    }
+
+    // Default to 'text' memo: must strictly not exceed 28 UTF-8 bytes
+    return { type: 'text', value: this.truncateTo28Utf8Bytes(memo) };
+  }
+
+  /**
+   * Truncate string to at most 28 UTF-8 bytes without breaking UTF-8 characters
+   * or leaving unpaired surrogate characters.
+   */
+  truncateTo28Utf8Bytes(input: string): string {
+    if (!input || typeof input !== 'string') return '';
+    let result = input;
+    while (Buffer.byteLength(result, 'utf8') > 28) {
+      result = result.slice(0, -1);
+    }
+    // Remove trailing unpaired surrogate if split mid-codepoint
+    if (result.length > 0 && /[\uD800-\uDBFF]$/.test(result)) {
+      result = result.slice(0, -1);
+    }
+    return result;
   }
 
 

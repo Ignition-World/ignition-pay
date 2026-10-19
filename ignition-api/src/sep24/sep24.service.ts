@@ -33,6 +33,7 @@ const SEP_24_DEPOSIT_STATUSES = [
   'pending_trust',
   'pending_user',
   'completed',
+  'refunded',
   'no_market',
   'too_small',
   'too_large',

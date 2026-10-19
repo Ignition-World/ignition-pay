@@ -44,6 +44,9 @@ describe('payload-limits', () => {
       expect(parseByteLimit('lots')).toBeUndefined();
       expect(parseByteLimit('1tb')).toBeUndefined();
       expect(parseByteLimit('-1mb')).toBeUndefined();
+      expect(parseByteLimit('0')).toBeUndefined();
+      expect(parseByteLimit(0)).toBeUndefined();
+      expect(parseByteLimit('0mb')).toBeUndefined();
     });
   });
 
@@ -65,6 +68,21 @@ describe('payload-limits', () => {
 
     it('throws on a malformed value instead of silently mis-sizing it', () => {
       process.env[ENV_JSON] = 'big';
+      expect(() => byteLimitEnvValue(ENV_JSON)).toThrow(
+        /MAX_JSON_BODY_BYTES/,
+      );
+    });
+
+    it('throws on zero or negative value', () => {
+      process.env[ENV_JSON] = '0';
+      expect(() => byteLimitEnvValue(ENV_JSON)).toThrow(
+        /MAX_JSON_BODY_BYTES/,
+      );
+      process.env[ENV_JSON] = '0mb';
+      expect(() => byteLimitEnvValue(ENV_JSON)).toThrow(
+        /MAX_JSON_BODY_BYTES/,
+      );
+      process.env[ENV_JSON] = '-10';
       expect(() => byteLimitEnvValue(ENV_JSON)).toThrow(
         /MAX_JSON_BODY_BYTES/,
       );

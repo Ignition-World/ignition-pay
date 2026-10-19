@@ -284,4 +284,76 @@ describe('PaymentsService', () => {
       expect(queue.add).not.toHaveBeenCalled();
     });
   });
+
+  // ── Stellar memo 28-byte UTF-8 handling (Issue #808) ───────────────────────
+
+  describe('Stellar memo UTF-8 handling (Issue #808)', () => {
+    beforeEach(() => setup());
+
+    it('preserves ASCII strings <= 28 chars / bytes', () => {
+      const ascii = '1234567890123456789012345678'; // exactly 28 bytes
+      expect(service.truncateTo28Utf8Bytes(ascii)).toBe(ascii);
+      expect(Buffer.byteLength(service.truncateTo28Utf8Bytes(ascii), 'utf8')).toBe(28);
+    });
+
+    it('truncates non-ASCII strings to <= 28 UTF-8 bytes to avoid op_malformed', () => {
+      // 28 non-ASCII characters (e.g. 28 accented characters = 56 bytes)
+      const nonAscii = 'é'.repeat(28);
+      const truncated = service.truncateTo28Utf8Bytes(nonAscii);
+      const byteLen = Buffer.byteLength(truncated, 'utf8');
+
+      expect(byteLen).toBeLessThanOrEqual(28);
+      expect(truncated.length).toBeLessThan(28); // 14 characters = 28 bytes
+      expect(byteLen).toBe(28);
+    });
+
+    it('safely handles multi-byte characters and emojis without producing invalid surrogates', () => {
+      const emojiString = 'Payment 🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀';
+      const truncated = service.truncateTo28Utf8Bytes(emojiString);
+      const byteLen = Buffer.byteLength(truncated, 'utf8');
+
+      expect(byteLen).toBeLessThanOrEqual(28);
+    });
+
+    it('buildStellarMemo converts 32-byte base64 hash to hex', () => {
+      // 32 zero bytes in base64 is 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+      const b64 = Buffer.alloc(32, 0xab).toString('base64');
+      const memo = service.buildStellarMemo(b64, 'hash');
+
+      expect(memo).toEqual({
+        type: 'hash',
+        value: 'ab'.repeat(32),
+      });
+    });
+
+    it('attaches sanitized memo to transaction and queue payload on initiatePayment', async () => {
+      const dto = makeDto({
+        memo: 'Payment for order with unicode: ☕☕☕☕☕☕☕☕',
+        memoType: 'text',
+      });
+      const result = await service.initiatePayment(dto as any);
+
+      expect(result).toHaveProperty('memo');
+      expect(Buffer.byteLength(result.memo!, 'utf8')).toBeLessThanOrEqual(28);
+
+      expect(prisma.transaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            metadata: expect.objectContaining({
+              memo: expect.any(String),
+              memoType: 'text',
+            }),
+          }),
+        }),
+      );
+
+      expect(queue.add).toHaveBeenCalledWith(
+        PAYMENT_JOB_PROCESS,
+        expect.objectContaining({
+          memo: expect.any(String),
+          memoType: 'text',
+        }),
+      );
+    });
+  });
 });

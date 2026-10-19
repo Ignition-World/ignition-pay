@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Inject,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import StellarSdk, { StrKey } from '@stellar/stellar-sdk';
 import { ConfigService } from '@nestjs/config';
@@ -15,6 +16,7 @@ import { CreateWalletDto, WalletNetwork } from './dto/create-wallet.dto';
 import { WalletStatus, WalletType } from '@prisma/client';
 import { WalletLimitService } from '../wallet/services/wallet-limit.service';
 import { generateNetworkAddress, isValidNetworkAddress } from './network-address.validator';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 @Injectable()
 export class WalletsService {
@@ -25,6 +27,7 @@ export class WalletsService {
     @Inject(CACHE_MANAGER) private cacheManager: Keyv,
     private readonly prisma: PrismaService,
     private readonly walletLimitService: WalletLimitService,
+    @Optional() private readonly analyticsService?: AnalyticsService,
   ) {
     this.horizonUrl =
       this.config.get<string>('STELLAR_HORIZON_URL') ??
@@ -88,6 +91,28 @@ export class WalletsService {
         label: dto.label ?? null,
         dailyLimit: limits.dailyLimit,
         monthlyLimit: limits.monthlyLimit,
+      },
+    });
+
+    // Issue #806: emit wallet_created and user_registered for funnel conversion tracking
+    this.analyticsService?.track({
+      name: 'wallet_created',
+      userId,
+      properties: {
+        walletId: wallet.id,
+        network,
+        walletType,
+        depositAddress,
+      },
+    });
+
+    this.analyticsService?.track({
+      name: 'user_registered',
+      userId,
+      properties: {
+        walletId: wallet.id,
+        network,
+        walletAddress: depositAddress,
       },
     });
 

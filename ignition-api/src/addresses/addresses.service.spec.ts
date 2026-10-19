@@ -128,6 +128,12 @@ const buildMockPrisma = (
         return { ...mockDepositAddress, ...data };
       }),
     },
+    $transaction: jest.fn().mockImplementation(async (arg: any) => {
+      if (typeof arg === 'function') {
+        return arg(mock);
+      }
+      return Promise.all(arg);
+    }),
   };
   return mock;
 };

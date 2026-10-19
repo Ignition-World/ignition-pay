@@ -11,11 +11,13 @@ import { ApiKeyGuard } from '../api-keys/api-key.guard';
 import { ApiKeyScopeGuard } from '../api-keys/api-key-scope.guard';
 import { ApiKeyExpirationService } from '../api-keys/api-key-expiration.service';
 import { WalletLimitService } from '../wallet/services/wallet-limit.service';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
   imports: [
     PrismaModule,
     ConfigModule,
+    AnalyticsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

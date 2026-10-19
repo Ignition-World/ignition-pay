@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
  */
 const NON_RETRYABLE_MESSAGES = [
   'op_already_existing',
+  'op_malformed',
   'tx_bad_seq',
   'tx_insufficient_fee',
   'tx_not_allowed',
