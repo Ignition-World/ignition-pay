@@ -32,6 +32,42 @@ import { Sep24WebhookVerificationService } from './sep24-webhook-verification.se
  *   app.use(express.json({ verify: (req, _res, buf) => { req['rawBody'] = buf; } }))
  * or equivalent middleware, which is configured in main.ts.
  */
+/**
+ * Issue #773 — the `Webhook-Timestamp` header is not always bare unix
+ * seconds.
+ *
+ * The previous parser only accepted `/^\d+$/`, so an anchor that sent the
+ * timestamp in any other form (ISO-8601, or an HTTP-date) had it silently
+ * dropped. The freshness window is the only replay defence this service has -
+ * the timestamp is deliberately not part of the signed payload - so for those
+ * anchors the window was not applied at all and a captured delivery stayed
+ * usable for the lifetime of the secret.
+ *
+ * A timestamp without an explicit offset is read as **UTC**, never as
+ * server-local time: `Date.parse` would read it in the server's timezone, and
+ * a daylight-saving cutover there shifts it by an hour, which is how a valid
+ * delivery turns into a rejected one.
+ */
+function parseTimestampSeconds(raw: string): number | undefined {
+  const value = raw.trim();
+  if (value.length === 0) return undefined;
+
+  if (/^\d+$/.test(value)) {
+    return Number.parseInt(value, 10);
+  }
+
+  const naiveDateTime =
+    /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(value);
+  const normalised = naiveDateTime
+    ? `${value.replace(' ', 'T')}Z`
+    : value;
+
+  const parsed = Date.parse(normalised);
+  if (!Number.isFinite(parsed)) return undefined;
+
+  return Math.floor(parsed / 1000);
+}
+
 @Injectable()
 export class Sep24WebhookGuard implements CanActivate {
   private readonly logger = new Logger(Sep24WebhookGuard.name);
@@ -89,8 +125,8 @@ export class Sep24WebhookGuard implements CanActivate {
     // send one keep working, and a malformed value is never treated as "now".
     const timestampHeader = request.headers['webhook-timestamp'];
     const parsedTimestamp =
-      typeof timestampHeader === 'string' && /^\d+$/.test(timestampHeader.trim())
-        ? Number.parseInt(timestampHeader.trim(), 10)
+      typeof timestampHeader === 'string'
+        ? parseTimestampSeconds(timestampHeader)
         : undefined;
 
     if (timestampHeader !== undefined && parsedTimestamp === undefined) {

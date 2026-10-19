@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   API_KEY_SCOPE_KEY,
   ApiKeyScope,
@@ -49,9 +50,12 @@ const SCOPE_RANK: Record<ApiKeyScope, number> = {
  */
 @Injectable()
 export class ApiKeyScopeGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly prisma: PrismaService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredScopes = this.reflector.getAllAndOverride<ApiKeyScope[]>(
       API_KEY_SCOPE_KEY,
       [context.getHandler(), context.getClass()],
@@ -90,6 +94,58 @@ export class ApiKeyScopeGuard implements CanActivate {
       );
     }
 
+    // Issue #774 — scope says *what* a key may do, not *which* resources it
+    // may touch.
+    await this.assertResourceOwnership(request, user, keyScope);
+
     return true;
+  }
+
+  /**
+   * Issue #774 — reject a request that targets a wallet the key's owner does
+   * not hold.
+   *
+   * Before this, a `read` key could point the API at any wallet and read that
+   * wallet's balance and recent payments (`GET /wallets/:id/balance`), i.e.
+   * enumerate balances across wallets the key was never granted.
+   *
+   * The wallet named by the request is resolved against the wallets the key's
+   * owner actually holds. A request that names no wallet, or names something
+   * that is not a wallet at all, is left to the route to handle.
+   */
+  private async assertResourceOwnership(
+    request: Request & { user?: ApiKeyUser },
+    user: ApiKeyUser,
+    keyScope: ApiKeyScope,
+  ): Promise<void> {
+    // `admin` is the platform-wide scope - it is not bound to one owner.
+    if (keyScope === 'admin') return;
+
+    // Without an owner id there is nothing to compare against.
+    if (!user.id) return;
+
+    const params = request.params as Record<string, unknown> | undefined;
+    const query = request.query as Record<string, unknown> | undefined;
+    const body = request.body as Record<string, unknown> | undefined;
+
+    const candidate =
+      params?.walletId ?? params?.id ?? query?.walletId ?? body?.walletId;
+
+    const requested = typeof candidate === 'string' ? candidate : undefined;
+    if (!requested) return;
+
+    const wallet = await this.prisma.wallet.findFirst({
+      where: { OR: [{ id: requested }, { depositAddress: requested }] },
+      select: { id: true, userId: true },
+    });
+
+    // Not a wallet resource - the route decides what to do with it.
+    if (!wallet) return;
+
+    if (wallet.userId !== user.id) {
+      throw new ForbiddenException(
+        'This API key is not authorized for the requested wallet.',
+      );
+    }
   }
 }
