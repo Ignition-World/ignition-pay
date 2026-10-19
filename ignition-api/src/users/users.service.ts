@@ -428,35 +428,52 @@ export class UsersService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      const retryAfter = Math.ceil(
-        (user.lockedUntil.getTime() - Date.now()) / 1000,
-      );
-      throw new UnauthorizedException({
-        message: `Account locked. Try again in ${retryAfter}s`,
-        retryAfterSeconds: Math.max(retryAfter, 1),
-      });
-    }
-
     if (!user.passwordHash) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Issue #777: the lockout used to be reported *before* the password was
+    // checked, so "Account locked. Try again in Ns" was only ever returned for
+    // an address that exists. That made the login endpoint an account
+    // enumeration oracle - and it answered known-but-locked accounts faster
+    // than unknown ones, so the timing leaked it too.
+    //
+    // The lockout is now only reported to a caller that has proved it owns the
+    // account. Unknown address, wrong password and locked account all return
+    // the same "Invalid credentials" envelope, and every one of them pays the
+    // same bcrypt cost.
+    const lockedUntil =
+      user.lockedUntil && user.lockedUntil > new Date()
+        ? user.lockedUntil
+        : null;
+
     const valid = await bcrypt.compare(password, user.passwordHash);
 
     if (!valid) {
-      const attempts = user.loginAttempts + 1;
-      const reachedThreshold = attempts >= maxAttempts;
-      const lockedUntil = reachedThreshold
-        ? new Date(Date.now() + lockoutSeconds * 1000)
-        : null;
+      // A locked account stays locked until its window elapses - a wrong
+      // password must not extend it.
+      if (!lockedUntil) {
+        const attempts = user.loginAttempts + 1;
+        const reachedThreshold = attempts >= maxAttempts;
+        const nextLockedUntil = reachedThreshold
+          ? new Date(Date.now() + lockoutSeconds * 1000)
+          : null;
 
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { loginAttempts: attempts, lockedUntil },
-      });
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { loginAttempts: attempts, lockedUntil: nextLockedUntil },
+        });
+      }
 
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (lockedUntil) {
+      const retryAfter = Math.ceil((lockedUntil.getTime() - Date.now()) / 1000);
+      throw new UnauthorizedException({
+        message: `Account locked. Try again in ${retryAfter}s`,
+        retryAfterSeconds: Math.max(retryAfter, 1),
+      });
     }
 
     await this.prisma.user.update({

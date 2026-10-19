@@ -430,6 +430,9 @@ describe('UsersService login', () => {
       lockedUntil: new Date(Date.now() + retryAfter * 1000),
     });
     (prisma.user.findFirst as jest.Mock).mockResolvedValue(user);
+    // Issue #777: the lockout is only reported to a caller that proved it
+    // owns the account, so the correct password is required to see it.
+    bcryptMock.compare.mockResolvedValueOnce(true as never);
 
     try {
       await service.login(user.email, 'any-password');
@@ -444,6 +447,26 @@ describe('UsersService login', () => {
       expect(response.retryAfterSeconds).toBeGreaterThanOrEqual(retryAfter - 5);
       expect(response.retryAfterSeconds).toBeLessThanOrEqual(retryAfter);
     }
+  });
+
+  it('does not reveal that a locked account exists (Issue #777)', async () => {
+    const user = mkUser({
+      loginAttempts: 5,
+      lockedUntil: new Date(Date.now() + 120_000),
+    });
+    (prisma.user.findFirst as jest.Mock).mockResolvedValue(user);
+    (prisma.user.update as jest.Mock).mockResolvedValue({});
+    bcryptMock.compare.mockResolvedValueOnce(false as never);
+
+    // A wrong password on a locked account must look exactly like a wrong
+    // password on an unknown account, otherwise the endpoint enumerates
+    // registered addresses.
+    await expect(service.login(user.email, 'wrong-password')).rejects.toThrow(
+      'Invalid credentials',
+    );
+
+    // ... and it must not extend the existing lockout window.
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('does not lock accounts with no passwordHash (Issue #232)', async () => {
