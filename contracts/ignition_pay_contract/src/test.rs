@@ -900,7 +900,6 @@ fn test_price_feed_rejects_zero_max_deviation() {
     feed_contract.set_max_deviation_bps(&0);
 }
 
-<<<<<<< HEAD
 fn create_dispute_escrow_contract(env: &Env, token: &Address) -> DisputeEscrowContractClient {
     let admin = Address::random(env);
     let contract =
@@ -977,7 +976,6 @@ fn test_dispute_escrow_rejects_nonpositive_deposit_amounts() {
     assert!(escrow.try_deposit(&1, &depositor, &0).is_err());
     assert!(escrow.try_deposit(&1, &depositor, &-1).is_err());
     assert!(escrow.try_is_frozen(&1).is_err());
-=======
 // ─── CONTRACT-032: Voting Power Snapshot Tests ───────────────────────────────
 //
 // These tests cover the fix for issue #844 / CONTRACT-032.
@@ -1178,5 +1176,4 @@ fn test_snapshot_panics_after_voting_window() {
 
     // Must panic — window is closed.
     gov.snapshot_voting_power(&1, &voter);
->>>>>>> 183d24f5042bb4510cc295ca9e2163fd20251e10
 }
