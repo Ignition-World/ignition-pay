@@ -41,9 +41,15 @@ export class ValidationExceptionFilter implements ExceptionFilter {
       typeof exceptionResponse === 'object' &&
       Array.isArray((exceptionResponse as any).message)
     ) {
-      const raw = (exceptionResponse as any).message as (string | ValidationError)[];
+      const raw = (exceptionResponse as any).message as (
+        string | ValidationError
+      )[];
       // class-validator errors have a 'constraints' property
-      if (raw.length > 0 && typeof raw[0] === 'object' && 'constraints' in raw[0]) {
+      if (
+        raw.length > 0 &&
+        typeof raw[0] === 'object' &&
+        'constraints' in raw[0]
+      ) {
         messages = flattenValidationErrors(raw as ValidationError[]);
       } else {
         messages = raw as string[];

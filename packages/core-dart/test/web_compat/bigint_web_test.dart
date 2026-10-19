@@ -1,3 +1,5 @@
+library;
+
 @TestOn('browser')
 
 import 'package:stellar_address_kit/stellar_address_kit.dart';

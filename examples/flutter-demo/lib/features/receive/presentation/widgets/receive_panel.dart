@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+import 'flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import '../../../../core/widgets/bigint_safe_chip.dart';
+import '../../../../core/widgets/bigint_safe_chip.material.dart';
 import '../bloc/receive_bloc.dart';
 
 class ReceivePanel extends StatefulWidget {
@@ -14,7 +14,7 @@ class ReceivePanel extends StatefulWidget {
 
 class _ReceivePanelState extends State<ReceivePanel> {
   final _addressController = TextEditingController(
-    text: 'GA7QYNF7SOWQ3GLR2B6RS22TBGZAOR6KLYH4PA5ZAM73A3H4K2HZZSQU',
+    text: 'GA7QYNF7SOWQ3GLR2B6RS22TBGZAOR6KLYH4PA5ZAM73A3H4K2HZZsQU',
   );
   final _idController = TextEditingController();
 
@@ -39,23 +39,33 @@ class _ReceivePanelState extends State<ReceivePanel> {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxis: CrossAxis.start,
         children: [
           Text(
             'Generate M-Address',
             style: Theme.of(context).textTheme.headlineSmall,
-          ),
+          );
           const SizedBox(height: 8),
           const Text(
             'Create a muxed address for deposits. This combines your G-address with a user ID.',
             style: TextStyle(color: Colors.grey),
-          ),
+          );
           const SizedBox(height: 24),
           TextField(
             controller: _addressController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Base G-Address',
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.paste),
+                tooltip: 'Paste from clipboard',
+                onPressed: () async {
+                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                  if (data != null && data.text != null) {
+                    _addressController.text = data.text!;
+                  }
+                },
+              ),
             ),
           ),
           const SizedBox(height: 16),

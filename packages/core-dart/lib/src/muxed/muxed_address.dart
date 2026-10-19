@@ -18,7 +18,7 @@ import 'encode.dart';
 /// apply appropriate conversion logic to maintain full 64-bit range correctness.
 ///
 /// For Flutter web guidance and BigInt caveats, see
-/// [flutter-web-bigint.md](../../../../docs/guides/flutter-web-bigint.md).
+/// [flutter-web-bigint.mdx](../../../../docs/guides/flutter-web-bigint.mdx).
 class MuxedAddress {
   static String encode({required String baseG, required BigInt id}) {
     final uint64Max = BigInt.parse('18446744073709551615');
@@ -44,9 +44,13 @@ class MuxedAddress {
 
   static List<int> _decodeG(String g) {
     try {
-      final decoded = StrKeyUtil.decodeBase32(g);
+      // Use decodeBase32Checked to validate the CRC-16 checksum on the
+      // G address. On failure it throws FormatException, which we wrap
+      // as a StellarAddressException.
+      final decoded = StrKeyUtil.decodeBase32Checked(g);
       return decoded.sublist(1, 33);
     } catch (e) {
+      if (e is StellarAddressException) rethrow;
       throw const StellarAddressException('Failed to decode G address');
     }
   }

@@ -1,4 +1,9 @@
-import { registerDecorator, ValidationOptions, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
+import {
+  registerDecorator,
+  ValidationOptions,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+} from 'class-validator';
 import { StrKey } from '@stellar/stellar-sdk';
 
 @ValidatorConstraint({ async: false })
@@ -14,7 +19,7 @@ export class IsStellarPublicKeyConstraint implements ValidatorConstraintInterfac
 }
 
 export function IsStellarPublicKey(validationOptions?: ValidationOptions): any {
-  return function (object: Object, propertyName: string | symbol) {
+  return function (object: object, propertyName: string | symbol) {
     registerDecorator({
       name: 'isStellarPublicKey',
       target: object.constructor,

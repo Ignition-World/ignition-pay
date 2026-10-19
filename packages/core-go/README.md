@@ -11,8 +11,8 @@ Part of a multi-language suite also available in **[TypeScript](https://github.c
 ---
 
 ### 📖 Documentation & Guides
-- [Go: Deposit Routing Service Integration](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/go-deposit-routing-service.md)
-- [Go: Running the Spec Validator](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/go-running-spec-validator.md)
+- [Go: Deposit Routing Service Integration](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/go-deposit-routing.mdx)
+- [Go: Running the Spec Validator](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/go-spec-validator.mdx)
 - [General: Compatibility Reference](https://github.com/Boxkit-Labs/stellar-address-kit/blob/main/docs/guides/compatibility-reference.md)
 
 ---

@@ -1,106 +1,125 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreateQuoteDto } from './dto/create-quote.dto';
-import { QuoteResponseDto } from './dto/quote-response.dto';
+import { Injectable, NotFoundException } from '@nestjs/common'
+import { randomUUID } from 'crypto'
+import { RequestQuoteDto } from './dto/request-quote.dto'
+import { QuoteResponseDto } from './dto/quote-response.dto'
+
+const ANCHOR_CONFIGS: Record<string, { domain: string }> = {
+  StellarX: { domain: 'https://api.stellarx.com' },
+  AnchorUSD: { domain: 'https://api.anchorusd.com' },
+  GateHub: { domain: 'https://api.gatehub.com' },
+  PayMunk: { domain: 'https://api.paymunk.com' },
+}
+
+const FIAT_TO_USDC_RATES: Record<string, number> = {
+  USD: 1,
+  EUR: 1.08,
+  GBP: 1.26,
+  INR: 0.012,
+  PHP: 0.018,
+  THB: 0.028,
+}
+
+const FEE_RATE = 0.005
 
 @Injectable()
 export class Sep38Service {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor() {}
 
-  /**
-   * Persist a new SEP-38 RFQ quote.
-   *
-   * The price column is declared as Decimal(20,7) in the Prisma schema so that
-   * sub-cent values (e.g. 0.00000000123) are stored without the lossy rounding
-   * that a Float column introduces when a value has more than 8 significant
-   * decimal digits.  We accept price as a plain string from the caller and pass
-   * it directly to Prisma so that no intermediate JS Number conversion can
-   * truncate it before the DB write.
-   */
-  async createQuote(
-    userId: string,
-    dto: CreateQuoteDto,
-  ): Promise<QuoteResponseDto> {
-    // Validate that the price string is a finite positive decimal number.
-    const parsedPrice = new Prisma.Decimal(dto.price);
-    if (parsedPrice.isNaN() || !parsedPrice.isFinite() || parsedPrice.lte(0)) {
-      throw new BadRequestException('price must be a positive finite decimal');
+  private getAnchorConfig(anchorName: string): { domain: string } {
+    const config = ANCHOR_CONFIGS[anchorName]
+    if (!config) {
+      throw new NotFoundException(`Unknown anchor: ${anchorName}`)
     }
-
-    const parsedSellAmount = new Prisma.Decimal(dto.sellAmount);
-    if (
-      parsedSellAmount.isNaN() ||
-      !parsedSellAmount.isFinite() ||
-      parsedSellAmount.lte(0)
-    ) {
-      throw new BadRequestException(
-        'sellAmount must be a positive finite decimal',
-      );
-    }
-
-    const quote = await this.prisma.sep38Quote.create({
-      data: {
-        userId,
-        sellAsset: dto.sellAsset,
-        buyAsset: dto.buyAsset,
-        // Pass Prisma.Decimal directly — no JS Number conversion so precision
-        // is never lost on the way to the database.
-        sellAmount: parsedSellAmount,
-        price: parsedPrice,
-        expiresAt: new Date(dto.expiresAt),
-      },
-    });
-
-    return this.toResponseDto(quote);
+    return config
   }
 
-  /**
-   * Retrieve a quote by ID, scoped to the requesting user.
-   */
-  async getQuote(userId: string, quoteId: string): Promise<QuoteResponseDto> {
-    const quote = await this.prisma.sep38Quote.findUnique({
-      where: { id: quoteId },
-    });
+  async getQuote(req: RequestQuoteDto): Promise<QuoteResponseDto> {
+    this.getAnchorConfig(req.anchorName)
 
-    if (!quote || quote.userId !== userId) {
-      throw new NotFoundException(`Quote ${quoteId} not found`);
-    }
+    const quote = await this.fetchOrSimulateQuote(req)
 
-    return this.toResponseDto(quote);
-  }
-
-  /**
-   * Map a Prisma Sep38Quote row to the response DTO.
-   *
-   * price and sellAmount are returned as strings so that the serialised JSON
-   * never loses precision through a JS Number round-trip.
-   */
-  private toResponseDto(quote: {
-    id: string;
-    userId: string;
-    sellAsset: string;
-    buyAsset: string;
-    sellAmount: Prisma.Decimal;
-    price: Prisma.Decimal;
-    expiresAt: Date;
-    createdAt: Date;
-  }): QuoteResponseDto {
     return {
-      id: quote.id,
-      userId: quote.userId,
+      id: randomUUID(),
+      price: quote.price,
+      totalPrice: quote.totalPrice,
+      sellAmount: quote.sellAmount,
+      buyAmount: quote.buyAmount,
       sellAsset: quote.sellAsset,
       buyAsset: quote.buyAsset,
-      sellAmount: quote.sellAmount.toFixed(),
-      // toFixed() preserves all significant digits — no scientific notation,
-      // no precision loss from Number coercion.
-      price: quote.price.toFixed(),
-      expiresAt: quote.expiresAt.toISOString(),
-      createdAt: quote.createdAt.toISOString(),
-    };
+      fee: quote.fee,
+      expiresAt: quote.expiresAt,
+      createdAt: new Date().toISOString(),
+    }
+  }
+
+  private async fetchOrSimulateQuote(req: RequestQuoteDto): Promise<{
+    price: string
+    totalPrice: string
+    sellAmount: string
+    buyAmount: string
+    sellAsset: string
+    buyAsset: string
+    fee?: { total: string; asset: string }
+    expiresAt: string
+  }> {
+    try {
+      const response = await fetch(
+        `https://api.stellarx.com/sep38/quote`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sell_asset: `iso4217:${req.sellAsset}`,
+            buy_asset: `stellar:${req.buyAsset}:GBBD47UZQ5ODSQIRQ73RQ5NBAYKU5NK2HRE3ENDQMAIL7UCHQVCD2Z4A`,
+            sell_amount: req.sellAmount.toString(),
+          }),
+        },
+      )
+      if (response.ok) {
+        const data = await response.json()
+        return {
+          price: data.price,
+          totalPrice: (parseFloat(data.price) * req.sellAmount).toFixed(7),
+          sellAmount: req.sellAmount.toString(),
+          buyAmount: data.buy_amount,
+          sellAsset: req.sellAsset,
+          buyAsset: req.buyAsset,
+          fee: data.fee ?? { total: '0', asset: req.buyAsset },
+          expiresAt: data.expires_at,
+        }
+      }
+    } catch {
+      // Fall through to simulation
+    }
+
+    return this.simulateQuote(req)
+  }
+
+  private simulateQuote(req: RequestQuoteDto): {
+    price: string
+    totalPrice: string
+    sellAmount: string
+    buyAmount: string
+    sellAsset: string
+    buyAsset: string
+    fee?: { total: string; asset: string }
+    expiresAt: string
+  } {
+    const rate = FIAT_TO_USDC_RATES[req.sellAsset] ?? 1
+    const buyAmountBeforeFee = req.sellAmount * rate
+    const feeAmount = buyAmountBeforeFee * FEE_RATE
+    const buyAmount = buyAmountBeforeFee - feeAmount
+    const price = rate.toFixed(7)
+
+    return {
+      price,
+      totalPrice: buyAmountBeforeFee.toFixed(7),
+      sellAmount: req.sellAmount.toString(),
+      buyAmount: buyAmount.toFixed(7),
+      sellAsset: req.sellAsset,
+      buyAsset: req.buyAsset,
+      fee: { total: feeAmount.toFixed(7), asset: req.buyAsset },
+      expiresAt: new Date(Date.now() + 30_000).toISOString(),
+    }
   }
 }

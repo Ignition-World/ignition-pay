@@ -2,7 +2,8 @@ import { RoutingInput, RoutingResult } from "./types";
 import { Warning } from "../address/types";
 import { parse } from "../address/parse";
 import { AddressParseError } from "../address/errors";
-import { normalizeMemoTextId } from "./memo";
+import { normalizeMemoTextId, validateMemoHash, validateMemoText } from "./memo";
+import { resolveFlags } from "./flags";
 
 export class ExtractRoutingError extends Error {
   constructor(message: string) {
@@ -34,18 +35,27 @@ function assertRoutableAddress(destination: string): void {
 }
 
 /**
- * Extracts deposit routing information from a Stellar address and memo.
- * 
- * Routing Policy:
- * 1. M-addresses: Routing ID is extracted from the address; any memo is ignored for routing.
- * 2. G-addresses: Routing ID is extracted from MEMO_ID or numeric MEMO_TEXT if valid.
- * 
- * @param input - The destination address and optional memo components.
- * @returns A result containing the base account, routing ID, source, and any warnings.
+ * Experimental routing path.
+ *
+ * Placeholder for the upcoming multi-chain routing model. Currently returns a
+ * stable result identical to the standard path so that callers opting in via
+ * `flags.experimentalRouting` can safely integrate without behavioural
+ * changes until the new model is ready.
+ *
+ * @internal
  */
-export function extractRouting(input: RoutingInput): RoutingResult {
-  assertRoutableAddress(input.destination);
+function extractRoutingExperimental(input: RoutingInput): RoutingResult {
+  // TODO: replace with multi-chain resolution logic when the new routing
+  // model is stabilised. For now, delegate to the stable implementation so
+  // the flag is wired up and testable without breaking anything.
+  return extractRoutingStable(input);
+}
 
+/**
+ * Stable (current production) routing path.
+ * @internal
+ */
+function extractRoutingStable(input: RoutingInput): RoutingResult {
   let parsed;
   try {
     parsed = parse(input.destination);
@@ -153,19 +163,27 @@ export function extractRouting(input: RoutingInput): RoutingResult {
       routingId = norm.normalized;
       routingSource = "memo";
       warnings.push(...norm.warnings);
+    } else if (validateMemoText(input.memoValue)) {
+      routingId = input.memoValue;
+      routingSource = "memo";
     } else {
       warnings.push({
         code: "MEMO_TEXT_UNROUTABLE",
         severity: "warn",
-        message: "MEMO_TEXT was not a valid numeric uint64.",
+        message: "MEMO_TEXT was not valid for routing (must be <= 28 UTF-8 bytes).",
       });
     }
-  } else if (input.memoType === "hash" || input.memoType === "return") {
-    warnings.push({
-      code: "MEMO_TEXT_UNROUTABLE",
-      severity: "warn",
-      message: `Memo type ${input.memoType} is not supported for routing.`,
-    });
+  } else if ((input.memoType === "hash" || input.memoType === "return") && input.memoValue) {
+    if (validateMemoHash(input.memoValue)) {
+      routingId = input.memoValue.toLowerCase();
+      routingSource = "memo";
+    } else {
+      warnings.push({
+        code: "MEMO_TEXT_UNROUTABLE",
+        severity: "warn",
+        message: `MEMO_${input.memoType.toUpperCase()} was not a valid 32-byte hex hash.`,
+      });
+    }
   } else if (input.memoType !== "none") {
     warnings.push({
       code: "MEMO_TEXT_UNROUTABLE",
@@ -180,4 +198,28 @@ export function extractRouting(input: RoutingInput): RoutingResult {
     routingSource,
     warnings,
   };
+}
+
+/**
+ * Extracts deposit routing information from a Stellar address and memo.
+ *
+ * Routing Policy:
+ * 1. M-addresses: Routing ID is extracted from the address; any memo is ignored for routing.
+ * 2. G-addresses: Routing ID is extracted from MEMO_ID or numeric MEMO_TEXT if valid.
+ *
+ * Pass `flags: { experimentalRouting: true }` inside `input` to opt in to the
+ * experimental multi-chain routing path (gated behind a feature flag).
+ *
+ * @param input - The destination address, optional memo components, and optional flags.
+ * @returns A result containing the base account, routing ID, source, and any warnings.
+ */
+export function extractRouting(input: RoutingInput): RoutingResult {
+  assertRoutableAddress(input.destination);
+
+  const flags = resolveFlags(input.flags);
+  if (flags.experimentalRouting) {
+    return extractRoutingExperimental(input);
+  }
+
+  return extractRoutingStable(input);
 }

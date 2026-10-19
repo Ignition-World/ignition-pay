@@ -40,6 +40,77 @@ void main() {
       expect(address, startsWith('G'));
       expect(address.length, greaterThan(50));
     });
+
+    // -----------------------------------------------------------------------
+    // Issue #318 – Zeroize secret key material
+    // -----------------------------------------------------------------------
+    group('zeroize (#318)', () {
+      test('zeroize() overwrites secret key bytes with zeros', () {
+        final seed = List<int>.generate(32, (i) => i + 1); // non-zero bytes
+        final keypair = KeyPair.fromSeed(seed);
+
+        // Before zeroize the secret should match the original seed.
+        expect(keypair.secretKey, equals(seed));
+
+        keypair.zeroize();
+
+        // After zeroize all bytes must be zero.
+        expect(keypair.secretKey, everyElement(equals(0)));
+      });
+
+      test('zeroize() leaves the public key intact', () {
+        final seed = List<int>.generate(32, (i) => i);
+        final keypair = KeyPair.fromSeed(seed);
+        final publicBefore = List<int>.from(keypair.publicKey);
+
+        keypair.zeroize();
+
+        expect(keypair.publicKey, equals(publicBefore));
+      });
+
+      test('secretKey is an unmodifiable view', () {
+        final seed = List<int>.generate(32, (i) => i);
+        final keypair = KeyPair.fromSeed(seed);
+        expect(
+          () => (keypair.secretKey as List<int>)[0] = 0xFF,
+          throwsA(isA<UnsupportedError>()),
+        );
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Issue #320 – publicKeyAddress checksum endianness
+    // -----------------------------------------------------------------------
+    group('publicKeyAddress checksum endianness (#320)', () {
+      test('generated address passes round-trip validation', () {
+        final seed = List<int>.generate(32, (i) => i);
+        final keypair = KeyPair.fromSeed(seed);
+        final address = keypair.publicKeyAddress;
+
+        // If the CRC is appended in the wrong byte order, validateStellar
+        // will return isValid == false.
+        final result = validateStellar(address);
+        expect(result.isValid, isTrue,
+            reason:
+                'publicKeyAddress must produce a StrKey-valid G-address. '
+                'Checksum must be stored little-endian (low byte first).');
+      });
+
+      test('address length is exactly 56 characters', () {
+        final seed = List<int>.generate(32, (i) => i);
+        final address = KeyPair.fromSeed(seed).publicKeyAddress;
+        expect(address.length, equals(56));
+      });
+
+      test('several distinct seeds all produce valid addresses', () {
+        for (var i = 0; i < 10; i++) {
+          final seed = List<int>.generate(32, (j) => (i * 7 + j) & 0xFF);
+          final address = KeyPair.fromSeed(seed).publicKeyAddress;
+          expect(validateStellar(address).isValid, isTrue,
+              reason: 'seed $i produced an invalid address: $address');
+        }
+      });
+    });
   });
 
   group('StellarKeyDerivation', () {

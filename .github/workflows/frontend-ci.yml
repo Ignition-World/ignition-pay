@@ -1,0 +1,64 @@
+name: Frontend CI
+
+# Issue #671 — run the frontend suite with coverage and publish the report.
+#
+# `test:coverage` exits non-zero when the global figures fall below the 60%
+# thresholds declared in `ignition-pay-frontend/vitest.config.ts`, so a coverage
+# regression fails the build. The HTML/LCOV report is uploaded as an artifact so
+# reviewers can open the per-file breakdown without checking out the branch.
+#
+# The frontend ships its own `package-lock.json` and its scripts shell out to
+# `npm`, so it is installed with npm rather than the monorepo's pnpm workspace —
+# whose lockfile does not track the frontend's dependencies.
+
+on:
+  pull_request:
+    paths:
+      - 'ignition-pay-frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ignition-pay-frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: ignition-pay-frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ignition-pay-frontend/package-lock.json
+
+      # The frontend is on React 19 while @testing-library/react@14 peers on
+      # React 18, so npm's strict peer resolver rejects the tree. The lockfile is
+      # generated with legacy peer deps.
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      # `always()` so a failing gate still leaves the report for diagnosis.
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: ignition-pay-frontend/coverage/
+          if-no-files-found: warn

@@ -1,32 +1,33 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 export class QuoteResponseDto {
-  @ApiProperty({ description: 'Unique quote ID (UUID)' })
-  id: string;
+  @ApiProperty({ description: 'Unique quote ID' })
+  id: string
 
-  @ApiProperty({ description: 'Stellar account of the requesting user' })
-  userId: string;
+  @ApiProperty({ description: 'Price of one unit of sell asset in buy asset' })
+  price: string
 
-  @ApiProperty({ description: 'Asset being sold' })
-  sellAsset: string;
+  @ApiProperty({ description: 'Total price in buy asset' })
+  totalPrice: string
 
-  @ApiProperty({ description: 'Asset being bought' })
-  buyAsset: string;
+  @ApiProperty({ description: 'Amount of sell asset' })
+  sellAmount: string
 
-  @ApiProperty({
-    description: 'Sell amount as a string to preserve full decimal precision',
-  })
-  sellAmount: string;
+  @ApiProperty({ description: 'Amount of buy asset to be received' })
+  buyAmount: string
 
-  @ApiProperty({
-    description:
-      'Quoted price per unit — returned as a string to preserve sub-cent precision (e.g. 0.00000000123)',
-  })
-  price: string;
+  @ApiProperty({ description: 'Sell asset code' })
+  sellAsset: string
 
-  @ApiProperty({ description: 'ISO-8601 expiry timestamp for this quote' })
-  expiresAt: string;
+  @ApiProperty({ description: 'Buy asset code' })
+  buyAsset: string
 
-  @ApiProperty({ description: 'Creation timestamp' })
-  createdAt: string;
+  @ApiPropertyOptional({ description: 'Fee details' })
+  fee?: { total: string; asset: string }
+
+  @ApiProperty({ description: 'Quote expiration timestamp' })
+  expiresAt: string
+
+  @ApiProperty({ description: 'Quote creation timestamp' })
+  createdAt: string
 }
