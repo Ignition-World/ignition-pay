@@ -33,6 +33,92 @@ import { useToast } from '@/components/ui/toast'
 
 const PAGE_SIZE = 10
 
+function getFilteredHistoryEmptyState(filters: HistoryFilters) {
+  if (filters.direction === 'sent') {
+    const statusMessages: Partial<
+      Record<HistoryFilters['status'], { title: string; description: string }>
+    > = {
+      FAILED: {
+        title: 'No failed outgoing payments',
+        description: 'Failed payments you sent will appear here.',
+      },
+      PENDING: {
+        title: 'No pending outgoing payments',
+        description: 'Payments waiting to complete will appear here.',
+      },
+      COMPLETED: {
+        title: 'No completed outgoing payments',
+        description: 'Completed payments you sent will appear here.',
+      },
+    }
+
+    return {
+      illustration: 'send' as const,
+      ...(statusMessages[filters.status] ?? {
+        title: 'No payments sent yet',
+        description: 'Payments you send will appear here.',
+      }),
+    }
+  }
+
+  if (filters.direction === 'received') {
+    const statusMessages: Partial<
+      Record<HistoryFilters['status'], { title: string; description: string }>
+    > = {
+      FAILED: {
+        title: 'No failed incoming payments',
+        description: 'Failed payments sent to your wallet will appear here.',
+      },
+      PENDING: {
+        title: 'No pending deposits',
+        description: 'Incoming deposits waiting to complete will appear here.',
+      },
+      COMPLETED: {
+        title: 'No completed incoming payments',
+        description: 'Completed payments received by your wallet will appear here.',
+      },
+    }
+
+    return {
+      illustration: 'receive' as const,
+      ...(statusMessages[filters.status] ?? {
+        title: 'No payments received yet',
+        description: 'Payments received by your wallet will appear here.',
+      }),
+    }
+  }
+
+  if (filters.status === 'FAILED') {
+    return {
+      illustration: 'failed' as const,
+      title: 'No failed payments',
+      description: 'Failed payments matching your filters will appear here.',
+    }
+  }
+
+  if (filters.status === 'PENDING') {
+    return {
+      illustration: 'history' as const,
+      title: 'No pending payments',
+      description: 'Payments waiting to complete will appear here.',
+    }
+  }
+
+  if (filters.status === 'COMPLETED') {
+    return {
+      illustration: 'history' as const,
+      title: 'No completed payments',
+      description: 'Completed payments matching your filters will appear here.',
+    }
+  }
+
+  return {
+    illustration: 'history' as const,
+    title: 'No transactions found',
+    description: 'Try adjusting your filters or search terms.',
+  }
+}
+
 /**
  * Free-text search is debounced before it reaches the URL: the query string is
  * now the single source of truth, so writing to it on every keystroke would
@@ -502,12 +588,7 @@ export function HistoryPage() {
           </div>
         ) : visibleTransactions.length === 0 ? (
           filtersAreActive ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground mb-2">No transactions found</p>
-              <p className="text-sm text-muted-foreground">
-                Try adjusting your filters or search terms
-              </p>
-            </div>
+            <EmptyState {...getFilteredHistoryEmptyState(filters)} />
           ) : (
             <EmptyState
               illustration="history"
