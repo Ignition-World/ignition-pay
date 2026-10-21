@@ -30,15 +30,18 @@ describe('SettingsPage', () => {
       </LanguageProvider>,
     )
 
-    expect(screen.getByText('Account')).toBeInTheDocument()
-    expect(screen.getByText('Security')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText('Notifications')).toBeInTheDocument())
+    // Section names appear in both the desktop and mobile navs (and as headings).
+    expect(screen.getAllByText('Account').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Security').length).toBeGreaterThan(0)
+    await waitFor(() =>
+      expect(screen.getAllByText('Notifications').length).toBeGreaterThan(0),
+    )
 
     // #668 — the shortcut configuration section lives on this page.
     expect(
       screen.getByRole('heading', { name: 'Keyboard shortcuts' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('Preferences')).toBeInTheDocument()
+    expect(screen.getAllByText('Preferences').length).toBeGreaterThan(0)
   })
 
   // #883 — A/B assignments are per user and must be purged on sign-out so the
