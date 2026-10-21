@@ -189,22 +189,31 @@ export function applyTheme(mode: ThemeMode, contrast: ContrastLevel = 'normal'):
   root.style.colorScheme = resolved === 'dark' ? 'dark' : 'light'
 }
 
+/**
+ * Storage keys shared by the React store and the blocking first-paint script.
+ *
+ * Exporting them keeps the two readers from drifting: if one side ever changes
+ * a key without the other, a hard refresh falls back to the system theme.
+ */
+export const THEME_STORAGE_KEY = 'theme'
+export const CONTRAST_STORAGE_KEY = 'contrast'
+
 export function getStoredTheme(): ThemeMode {
   if (typeof window === 'undefined') return 'system'
-  return (localStorage.getItem('theme') as ThemeMode) || 'system'
+  return (localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode) || 'system'
 }
 
 export function storeTheme(mode: ThemeMode): void {
-  localStorage.setItem('theme', mode)
+  localStorage.setItem(THEME_STORAGE_KEY, mode)
 }
 
 export function getStoredContrast(): ContrastLevel {
   if (typeof window === 'undefined') return 'normal'
-  return (localStorage.getItem('contrast') as ContrastLevel) || 'normal'
+  return (localStorage.getItem(CONTRAST_STORAGE_KEY) as ContrastLevel) || 'normal'
 }
 
 export function storeContrast(contrast: ContrastLevel): void {
-  localStorage.setItem('contrast', contrast)
+  localStorage.setItem(CONTRAST_STORAGE_KEY, contrast)
 }
 
 /**
@@ -223,7 +232,7 @@ export const themeBootstrapScript = `
 (function(){
   try {
     var root = document.documentElement;
-    var stored = localStorage.getItem('theme');
+    var stored = localStorage.getItem('${THEME_STORAGE_KEY}');
     var mode = stored || 'system';
     var resolved;
     if (mode === 'system') {
@@ -234,7 +243,7 @@ export const themeBootstrapScript = `
     root.classList.toggle('dark', resolved === 'dark');
     root.style.colorScheme = resolved;
 
-    var contrastStored = localStorage.getItem('contrast');
+    var contrastStored = localStorage.getItem('${CONTRAST_STORAGE_KEY}');
     root.classList.toggle('high-contrast', contrastStored === 'high');
   } catch(e) {}
 })();
