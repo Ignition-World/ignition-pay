@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
-export type EmptyStateIllustration = 'history' | 'send' | 'receive'
+export type EmptyStateIllustration = 'history' | 'send' | 'receive' | 'failed'
 
 interface EmptyStateAction {
   label: string
@@ -204,11 +204,52 @@ function ReceiveIllustration() {
   )
 }
 
+function FailedIllustration() {
+  return (
+    <svg
+      viewBox="0 0 200 140"
+      className="h-32 w-44"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect
+        x="48"
+        y="16"
+        width="88"
+        height="108"
+        rx="10"
+        className="fill-primary/10 stroke-primary/40"
+        strokeWidth="2"
+      />
+      <path
+        d="M68 42h48M68 58h32"
+        className="stroke-muted-foreground/40"
+        strokeWidth="6"
+        strokeLinecap="round"
+      />
+      <circle
+        cx="132"
+        cy="94"
+        r="24"
+        className="fill-background stroke-destructive"
+        strokeWidth="2.5"
+      />
+      <path
+        d="m124 86 16 16m0-16-16 16"
+        className="stroke-destructive"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 const ILLUSTRATIONS: Record<EmptyStateIllustration, () => React.ReactElement> =
   {
     history: HistoryIllustration,
     send: SendIllustration,
     receive: ReceiveIllustration,
+    failed: FailedIllustration,
   }
 
 export function EmptyState({
