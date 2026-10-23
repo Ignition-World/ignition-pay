@@ -347,7 +347,7 @@ fn test_metadata_set_and_get() {
     let icon = Symbol::new(&env, "usdc_icon");
     let description = Symbol::new(&env, "USD Coin stablecoin");
 
-    contract.set_metadata(&asset, &name, &icon, &description);
+    contract.set_metadata(&asset, &Some(name.clone()), &Some(icon.clone()), &Some(description.clone()));
 
     assert_eq!(contract.get_name(&asset), Some(name));
     assert_eq!(contract.get_icon(&asset), Some(icon));
@@ -368,7 +368,7 @@ fn test_metadata_remove() {
     let icon = Symbol::new(&env, "usdc_icon");
     let description = Symbol::new(&env, "USD Coin stablecoin");
 
-    contract.set_metadata(&asset, &name, &icon, &description);
+    contract.set_metadata(&asset, &Some(name.clone()), &Some(icon.clone()), &Some(description.clone()));
     contract.remove_metadata(&asset);
 
     assert_eq!(contract.has_metadata(&asset), false);
