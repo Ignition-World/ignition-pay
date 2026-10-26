@@ -9,6 +9,11 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // The UI snapshot tests call `expect` without importing it.
+    globals: true,
+    // No snapshot files are committed for tests/ui yet; vitest refuses to write
+    // new snapshots on CI, so let them be recorded there until they are checked in.
+    update: Boolean(process.env.CI),
     include: ['tests/**/*.test.{ts,tsx}'],
     setupFiles: ['./tests/setup.ts'],
     // #671 — report and enforce coverage. `test:coverage` fails when the global

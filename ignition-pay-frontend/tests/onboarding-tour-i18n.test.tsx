@@ -58,7 +58,9 @@ describe('OnboardingTour translations (#874)', () => {
         expect(dialog.textContent).not.toMatch(/onboardingTour\./)
         if (index < ONBOARDING_STEPS.length - 1) {
           await act(async () => {
-            const buttons = screen.getAllByRole('button')
+            // The dialog's Close button follows the footer, so target the footer.
+            const footer = dialog.querySelector('[data-slot="dialog-footer"]')!
+            const buttons = footer.querySelectorAll('button')
             buttons[buttons.length - 1].click()
           })
         }
