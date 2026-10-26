@@ -347,7 +347,7 @@ fn test_metadata_set_and_get() {
     let icon = Symbol::new(&env, "usdc_icon");
     let description = Symbol::new(&env, "USD Coin stablecoin");
 
-    contract.set_metadata(&asset, &name, &icon, &description);
+    contract.set_metadata(&asset, &Some(name.clone()), &Some(icon.clone()), &Some(description.clone()));
 
     assert_eq!(contract.get_name(&asset), Some(name));
     assert_eq!(contract.get_icon(&asset), Some(icon));
@@ -368,7 +368,7 @@ fn test_metadata_remove() {
     let icon = Symbol::new(&env, "usdc_icon");
     let description = Symbol::new(&env, "USD Coin stablecoin");
 
-    contract.set_metadata(&asset, &name, &icon, &description);
+    contract.set_metadata(&asset, &Some(name.clone()), &Some(icon.clone()), &Some(description.clone()));
     contract.remove_metadata(&asset);
 
     assert_eq!(contract.has_metadata(&asset), false);
@@ -1098,4 +1098,24 @@ fn test_snapshot_panics_after_voting_window() {
 
     // Must panic — window is closed.
     gov.snapshot_voting_power(&1, &voter);
+}
+
+#[test]
+fn test_metadata_partial_update_preserves_other_fields() {
+    let env = Env::default();
+    let admin = Address::random(&env);
+    let asset = Address::random(&env);
+    let contract = create_metadata_contract(&env);
+    contract.initialize(&admin);
+
+    let icon = Symbol::new(&env, "usdc_icon");
+    let description = Symbol::new(&env, "USD Coin stablecoin");
+    contract.set_metadata(&asset, &Some(Symbol::new(&env, "USDC")), &Some(icon.clone()), &Some(description.clone()));
+
+    let new_name = Symbol::new(&env, "USDC2");
+    contract.set_metadata(&asset, &Some(new_name.clone()), &None, &None);
+
+    assert_eq!(contract.get_name(&asset), Some(new_name));
+    assert_eq!(contract.get_icon(&asset), Some(icon));
+    assert_eq!(contract.get_description(&asset), Some(description));
 }

@@ -777,24 +777,29 @@ impl TokenMetadataContract {
         env.storage().instance().set(&Symbol::new(&env, "descriptions"), &Map::<Address, Symbol>::new(&env));
     }
 
-    pub fn set_metadata(&self, env: &Env, asset: Address, name: Symbol, icon: Symbol, description: Symbol) {
+    /// Partially updates the metadata record for `asset`.
+    ///
+    /// Each field is optional: `None` leaves the stored value untouched, so
+    /// updating only the name no longer resets the icon or description.
+    pub fn set_metadata(
+        &self,
+        env: &Env,
+        asset: Address,
+        name: Option<Symbol>,
+        icon: Option<Symbol>,
+        description: Option<Symbol>,
+    ) {
         let admin: Address = env.storage().instance().get(&Symbol::new(&env, "admin")).unwrap_or_else(|| panic!("Admin not set"));
         admin.require_auth();
 
-        let mut metadata: Map<Address, Symbol> =
-            env.storage().instance().get(&Symbol::new(&env, "metadata")).unwrap_or_else(|| Map::new(env));
-        metadata.set(asset.clone(), name);
-        env.storage().instance().set(&Symbol::new(&env, "metadata"), &metadata);
-
-        let mut icons: Map<Address, Symbol> =
-            env.storage().instance().get(&Symbol::new(&env, "icons")).unwrap_or_else(|| Map::new(env));
-        icons.set(asset.clone(), icon);
-        env.storage().instance().set(&Symbol::new(&env, "icons"), &icons);
-
-        let mut descriptions: Map<Address, Symbol> =
-            env.storage().instance().get(&Symbol::new(&env, "descriptions")).unwrap_or_else(|| Map::new(env));
-        descriptions.set(asset, description);
-        env.storage().instance().set(&Symbol::new(&env, "descriptions"), &descriptions);
+        for (key, value) in [("metadata", name), ("icons", icon), ("descriptions", description)] {
+            if let Some(v) = value {
+                let mut map: Map<Address, Symbol> =
+                    env.storage().instance().get(&Symbol::new(&env, key)).unwrap_or_else(|| Map::new(env));
+                map.set(asset.clone(), v);
+                env.storage().instance().set(&Symbol::new(&env, key), &map);
+            }
+        }
     }
 
     pub fn get_name(env: Env, asset: Address) -> Option<Symbol> {
@@ -1712,6 +1717,22 @@ impl DisputeEscrowContract {
             .unwrap_or_else(|| panic!("Escrow not found"));
         if entry.frozen {
             panic!("Escrow already frozen");
+        }
+        // Funds were moved into this contract's own (escrow) account on
+        // deposit. Confirm that account still holds the frozen amount so the
+        // freeze is backed by custody rather than being only a flag.
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, "token"))
+            .unwrap_or_else(|| panic!("Token not set"));
+        let held: i128 = env.invoke_contract::<i128>(
+            &token,
+            &Symbol::new(&env, "balance"),
+            soroban_sdk::vec![&env, soroban_sdk::IntoVal::into_val(&env.current_contract_address(), &env)],
+        );
+        if held < entry.amount {
+            panic!("Escrow balance insufficient for frozen amount");
         }
         entry.frozen = true;
         escrows.set(id, entry);
